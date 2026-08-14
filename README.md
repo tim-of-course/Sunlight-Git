@@ -1,7 +1,21 @@
-# Tauri + Solid + Typescript
+# Sunlight
 
-This template should help get you started developing with Tauri, Solid and Typescript in Vite.
+Local multi-repository Git GUI. Tauri 2 + Rust + SolidJS 1.9.
 
-## Recommended IDE Setup
+## Run
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+```powershell
+bun install
+bun run tauri dev
+```
+
+Open repositories with Browse or by pasting a path. A command (for example `bun run dev`) can stay running while you stage, commit, and push in the same column.
+
+## Test
+
+```powershell
+bun run test
+bun run typecheck
+cd src-tauri
+cargo test
+```

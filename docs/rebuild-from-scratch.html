@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Sunlight rebuild brief — keep the UI, replace the core</title>
+  <style>
+    :root {
+      --bg: #111319;
+      --bg-2: #171a21;
+      --bg-3: #1c2029;
+      --stroke: #353b49;
+      --stroke-2: #2a303d;
+      --text: #d8dde8;
+      --muted: #8b93a7;
+      --accent: #c9a227;
+      --good: #7dcea0;
+      --warn: #e0b15c;
+      --bad: #e07a7a;
+      --info: #7aa2e0;
+      --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 var(--sans);
+    }
+
+    body { overflow-x: hidden; }
+
+    a { color: var(--info); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+
+    header.doc-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--stroke);
+      margin-bottom: 28px;
+    }
+
+    .brand-row { display: flex; gap: 12px; align-items: center; }
+    .mark {
+      width: 36px; height: 36px;
+      display: grid; place-items: center;
+      background: var(--accent); color: #111319;
+      font-weight: 700; border-radius: 8px;
+    }
+    .kicker { color: var(--muted); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; }
+    h1 { margin: 6px 0 8px; font-size: 28px; line-height: 1.2; font-weight: 650; }
+    .lede { margin: 0; color: var(--muted); max-width: 62ch; }
+
+    .meta {
+      display: grid; gap: 6px;
+      font-size: 13px; color: var(--muted);
+      text-align: right;
+    }
+    .meta strong { color: var(--text); font-weight: 600; }
+
+    nav.toc {
+      background: var(--bg-2);
+      border: 1px solid var(--stroke-2);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 40px;
+    }
+    nav.toc h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    nav.toc ol { margin: 0; padding-left: 18px; columns: 2; gap: 32px; }
+    nav.toc li { break-inside: avoid; margin: 4px 0; }
+    nav.toc a { color: var(--text); }
+
+    h2 {
+      margin: 48px 0 12px;
+      padding-top: 8px;
+      font-size: 22px;
+      border-top: 1px solid var(--stroke-2);
+    }
+    h2:first-of-type { border-top: 0; }
+    h3 { margin: 28px 0 8px; font-size: 17px; }
+    p { margin: 0 0 12px; }
+    ul, ol { margin: 0 0 16px; padding-left: 22px; }
+    li { margin: 4px 0; }
+    code, kbd {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: var(--bg-3);
+      border: 1px solid var(--stroke-2);
+      border-radius: 4px;
+      padding: 0 5px;
+    }
+    pre {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.45;
+      background: var(--bg-2);
+      border: 1px solid var(--stroke-2);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 0 0 16px;
+    }
+    pre code { background: none; border: 0; padding: 0; }
+
+    .callout {
+      border-left: 3px solid var(--accent);
+      background: var(--bg-2);
+      padding: 12px 16px;
+      margin: 0 0 20px;
+      border-radius: 0 8px 8px 0;
+    }
+    .callout.bad { border-left-color: var(--bad); }
+    .callout.good { border-left-color: var(--good); }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.info { border-left-color: var(--info); }
+    .callout p:last-child { margin-bottom: 0; }
+    .callout strong.label { display: block; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; color: var(--muted); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin: 0 0 20px;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--stroke-2);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.03em; text-transform: uppercase; }
+    td.keep { color: var(--good); }
+    td.drop { color: var(--bad); }
+    td.change { color: var(--warn); }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 0 0 20px;
+    }
+    .card {
+      background: var(--bg-2);
+      border: 1px solid var(--stroke-2);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .card h3 { margin-top: 0; }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+
+    .finding {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--stroke-2);
+    }
+    .finding:last-child { border-bottom: 0; }
+    .sev {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 4px 0;
+    }
+    .sev.p0 { color: var(--bad); }
+    .sev.p1 { color: var(--warn); }
+    .sev.p2 { color: var(--info); }
+    .finding h3 { margin: 0 0 6px; }
+    .finding p:last-child { margin-bottom: 0; }
+    .src { color: var(--muted); font-size: 13px; font-family: var(--mono); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 0 0 20px;
+    }
+    .flow .step {
+      background: var(--bg-3);
+      border: 1px solid var(--stroke);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+    }
+    .flow .step strong { display: block; margin-bottom: 4px; }
+    .flow .step.hot { border-color: var(--bad); }
+
+    .must { color: var(--bad); font-weight: 650; }
+    .should { color: var(--warn); font-weight: 650; }
+    .may { color: var(--info); font-weight: 650; }
+
+    footer {
+      margin-top: 56px;
+      padding-top: 16px;
+      border-top: 1px solid var(--stroke);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 800px) {
+      header.doc-hero, .grid-2, .flow, nav.toc ol, .finding {
+        grid-template-columns: 1fr;
+        columns: 1;
+      }
+      .meta { text-align: left; }
+      .flow { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      body { background: white; color: #111; }
+      a { color: inherit; }
+      .card, nav.toc, pre, .callout { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="doc-hero">
+      <div>
+        <div class="brand-row">
+          <div class="mark">S</div>
+          <div class="kicker">Architecture review · rebuild brief</div>
+        </div>
+        <h1>Keep the Sunlight UI. Rebuild the core.</h1>
+        <p class="lede">
+          Review of the current Phoenix + SolidJS 2 beta app, and a from-scratch plan that
+          preserves the visual product while cutting RAM/CPU and unlocking concurrent Git
+          work next to a running dev server.
+        </p>
+      </div>
+      <div class="meta">
+        <div>Date <strong>2026-08-13</strong></div>
+        <div>Status <strong>recommendation, not a spec freeze</strong></div>
+        <div>Repo <strong>Sunlight</strong></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#verdict">Verdict</a></li>
+        <li><a href="#keep">What to keep</a></li>
+        <li><a href="#now">Current architecture</a></li>
+        <li><a href="#findings">Core defects</a></li>
+        <li><a href="#concurrency">Git + dev server concurrency</a></li>
+        <li><a href="#files">File-open UX</a></li>
+        <li><a href="#footprint">RAM and CPU</a></li>
+        <li><a href="#stack">Recommended stack</a></li>
+        <li><a href="#target">Target architecture</a></li>
+        <li><a href="#protocol">Event model</a></li>
+        <li><a href="#plan">Rebuild plan</a></li>
+        <li><a href="#accept">Acceptance criteria</a></li>
+      </ol>
+    </nav>
+
+    <section id="verdict">
+      <h2>1. Verdict</h2>
+      <div class="callout">
+        <strong class="label">Do not iterate the current core</strong>
+        <p>
+          The UI is the asset. The runtime is the liability. Elixir/Phoenix/LiveState is a
+          capable server stack, but this product is a local desktop Git tool. The BEAM plus a
+          browser tab plus a Rust tray is three runtimes for one window. A single per-repository
+          mutex then forbids the most common workflow: leave <code>bun run dev</code> up and still
+          stage, commit, and push.
+        </p>
+      </div>
+      <p>
+        Rebuild from scratch as a <strong>Tauri 2 + Rust + SolidJS 1.x</strong> app. Port
+        <code>assets/src/styles.css</code> and the column/sidebar/drawer layout almost 1:1.
+        Replace LiveState, the Workspace GenServer bottleneck, SolidJS 2.0 beta, and the
+        Git-vs-command lock. Keep the Git CLI, the parsers, the port-conflict helper, and the
+        local-only trust model.
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Keep</h3>
+          <ul>
+            <li>Dark column workspace and visual language</li>
+            <li>Commit graph, recents, persisted order</li>
+            <li>Git porcelain via the installed <code>git</code></li>
+            <li>Vite port-conflict / Replace Port behavior</li>
+            <li>Loopback-only, trusted-local-tool model</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Replace</h3>
+          <ul>
+            <li>Phoenix, Bandit, LiveState, OTP supervisors</li>
+            <li>SolidJS <code>2.0.0-beta.0</code> and next-channel Vite plugins</li>
+            <li>One-mailbox Workspace + per-repo exclusive lock</li>
+            <li>Full-state JSON patches for terminal output</li>
+            <li>Browser-tab host and separate tray process</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="keep">
+      <h2>2. What to keep</h2>
+      <p>
+        The current UI already looks like a finished product. A rebuild that “improves” the
+        chrome will waste the one part that is working. Treat the following as frozen unless a
+        workflow change requires it.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Surface</th><th>Source</th><th>Instruction</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Color, type, density</td>
+            <td><code>assets/src/styles.css</code></td>
+            <td class="keep">Port tokens and layout. Background <code>#111319</code>, Inter, 14px UI, 6px radii, custom scrollbars.</td>
+          </tr>
+          <tr>
+            <td>Shell</td>
+            <td><code>App.tsx</code> topbar + workspace</td>
+            <td class="keep">Brand, add-repo field, connection pill, horizontal columns, left repo rail.</td>
+          </tr>
+          <tr>
+            <td>Column anatomy</td>
+            <td><code>RepositoryColumn</code></td>
+            <td class="keep">Header, branch summary, Commands, Changes, commit form, History/Files split.</td>
+          </tr>
+          <tr>
+            <td>Commit graph</td>
+            <td><code>commitGraph.ts</code></td>
+            <td class="keep">Reuse the lane algorithm. It is isolated and tested.</td>
+          </tr>
+          <tr>
+            <td>Git domain</td>
+            <td><code>lib/sunlight/git/*</code></td>
+            <td class="keep">Port porcelain parsers (status v2, refs, commits). Do not invent a parallel Git model.</td>
+          </tr>
+          <tr>
+            <td>Port replace</td>
+            <td><code>repository.ex</code> listener helpers</td>
+            <td class="keep">Keep “port in use → Replace Port for node/bun” — this is real UX value.</td>
+          </tr>
+          <tr>
+            <td>Workspace persistence</td>
+            <td><code>workspace_store.ex</code></td>
+            <td class="keep">Atomic temp + backup + 20 recents. Same paths under LocalAppData / Application Support.</td>
+          </tr>
+          <tr>
+            <td>Safety rails</td>
+            <td>confirmations, path jail, UTF-8 editor limits</td>
+            <td class="keep">Destructive Git still confirms. File paths still cannot escape the repo.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="now">
+      <h2>3. Current architecture</h2>
+      <p>
+        Sunlight is a local-only multi-repo Git GUI. Production is an Elixir release on
+        <code>127.0.0.1:4200</code>, started at login by a Rust tray. Development uses Phoenix
+        on <code>:4201</code> with Vite <code>build --watch</code>. The browser is the real UI host.
+      </p>
+      <div class="flow" aria-label="Current process chain">
+        <div class="step"><strong>1. Tray</strong>Rust <code>sunlight-tray</code> + winit. Starts/stops the release.</div>
+        <div class="step"><strong>2. BEAM</strong>Phoenix Endpoint, PubSub, Workspace GenServer, per-repo GenServers.</div>
+        <div class="step hot"><strong>3. LiveState</strong>One websocket. JSONDiff patches of the entire workspace.</div>
+        <div class="step hot"><strong>4. Solid 2 beta</strong>One 1.8k-line <code>App.tsx</code>. File editor is a drawer.</div>
+        <div class="step"><strong>5. Git CLI</strong>Many <code>git</code> subprocesses per snapshot. Auth via installed Git.</div>
+      </div>
+      <h3>Runtime topology</h3>
+      <pre><code>Scheduled Task / LaunchAgent
+  └─ sunlight-tray.exe          (always on)
+       └─ mix release / beam    (Phoenix + Bandit, loopback)
+            ├─ Workspace        (ONE GenServer for all repos)
+            ├─ Repository * N   (Git + terminal + snapshot)
+            └─ WorkspaceChannel (LiveState, JSONDiff)
+Browser tab ──WebSocket──► /socket topic "workspace"</code></pre>
+      <h3>Why this felt reasonable</h3>
+      <ul>
+        <li>OTP isolation and restart look like a good fit for N repositories.</li>
+        <li>LiveState promised a tiny frontend: server owns state, client renders.</li>
+        <li>Solid is a low-RAM UI library compared with React.</li>
+        <li>Git CLI preserves credential manager, hooks, and SSH agent behavior.</li>
+      </ul>
+      <p>
+        Those ideas are sound. The implementation couples them into a single mailbox and a
+        single exclusive lock, then ships a beta UI runtime on top. The isolation never reaches
+        the user-facing workflows.
+      </p>
+    </section>
+
+    <section id="findings">
+      <h2>4. Core defects</h2>
+      <p>
+        Ranked by how much they hurt stability, concurrency, or footprint. These are the
+        reasons a rebuild beats continued patching.
+      </p>
+
+      <article class="finding">
+        <div class="sev p0">P0</div>
+        <div>
+          <h3>Repository-wide exclusive lock</h3>
+          <p>
+            A running command sets <code>terminal.running</code>. Any Git <code>perform</code>
+            then returns <code>"Stop the running command before changing repository state"</code>.
+            The inverse is also true: a Git op blocks starting a command. The UI folds both into
+            one <code>busy()</code> flag and disables Commit, Push, Stage, Fetch, and close.
+          </p>
+          <p class="src">lib/sunlight/repository.ex · assets/src/App.tsx RepositoryColumn</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p0">P0</div>
+        <div>
+          <h3>Workspace GenServer is a global queue</h3>
+          <p>
+            Every add/remove/reorder/perform/diff/list_files/read_file/search/open/write goes
+            through <code>Sunlight.Workspace</code> via <code>GenServer.call</code>. File reads
+            and diffs hibernate that process. Opening a file in repo A can stall Git UI in repo B.
+            Snapshot-on-join walks every repository serially.
+          </p>
+          <p class="src">lib/sunlight/workspace.ex handle_call/3</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p0">P0</div>
+        <div>
+          <h3>Terminal output is broadcast as workspace state</h3>
+          <p>
+            Each stdout chunk updates a 32 KiB rolling string, PubSub-notifies every socket,
+            re-snapshots the repo, then JSONDiffs the <em>entire</em> workspace (all columns,
+            commits, branches, file lists, plus the terminal buffer). A noisy Vite server becomes
+            a CPU fan. This is the opposite of a low-footprint local tool.
+          </p>
+          <p class="src">repository.ex handle_info({port, {:data, _}}) · workspace_channel.ex update_state/2</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p1">P1</div>
+        <div>
+          <h3>SolidJS 2.0 beta is load-bearing</h3>
+          <p>
+            Production UI depends on <code>solid-js@2.0.0-beta.0</code>,
+            <code>@solidjs/web</code> beta, <code>vite-plugin-solid@3.0.0-next.0</code>, and
+            <code>onSettled</code> / two-argument <code>createEffect</code>. HMR is disabled.
+            <code>phx-live-state</code> is not a Solid 2 product. Beta churn is a stability tax
+            with no user-facing benefit.
+          </p>
+          <p class="src">assets/package.json · assets/src/liveState.ts · assets/vite.config.ts</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p1">P1</div>
+        <div>
+          <h3>File watcher cannot work in the release</h3>
+          <p>
+            <code>repository_file_watcher</code> defaults to <code>false</code>, so repos poll
+            every 30s. Even if enabled, <code>file_system</code> is declared
+            <code>runtime: false</code> in <code>mix.exs</code>, so the production release does
+            not include it. Status in the UI is stale by design.
+          </p>
+          <p class="src">mix.exs deps · config/config.exs · repository.ex maybe_start_watcher/1</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p1">P1</div>
+        <div>
+          <h3>Git snapshot is a subprocess storm</h3>
+          <p>
+            A full snapshot runs status (porcelain v2), up to three <code>rev-parse --git-path</code>
+            probes for merge/rebase, <code>for-each-ref</code>, <code>remote</code>,
+            <code>stash list</code>, and <code>log --all</code> (25 commits). Periodic refresh
+            still pays for status. Large repos + many columns = constant Git CPU even when idle.
+          </p>
+          <p class="src">lib/sunlight/git.ex snapshot/1 and status/1</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p1">P1</div>
+        <div>
+          <h3>Three processes, none of them a real window</h3>
+          <p>
+            Tray, BEAM, and a Chrome/Edge tab. No native folder picker, no OS file associations
+            inside the app, no WebView2 sharing. Opening Sunlight means opening a browser profile
+            the README already warns must be trusted. This is both a UX and a RAM problem.
+          </p>
+          <p class="src">native/sunlight-tray · README.md · page_controller.ex</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p2">P2</div>
+        <div>
+          <h3>LiveState version wrap and giant UI module</h3>
+          <p>
+            Channel versions are <code>rem(n + 1, 1001)</code>. A long session can collide.
+            <code>App.tsx</code> is ~1850 lines with sidebar, columns, graph, file tree, editor,
+            and terminal in one file. That is a maintenance hazard, not a visual one.
+          </p>
+          <p class="src">workspace_channel.ex update_state/2 · assets/src/App.tsx</p>
+        </div>
+      </article>
+
+      <article class="finding">
+        <div class="sev p2">P2</div>
+        <div>
+          <h3>Editor is one file per repository, in a modal</h3>
+          <p>
+            <code>openFiles</code> is keyed by repository id. Opening a second file in the same
+            repo replaces the first. The drawer covers the workspace. There is no quick-open,
+            no tabs, no open-from-status-list, no Cursor/VS Code target, and a raw textarea
+            with a 1 MiB cap.
+          </p>
+          <p class="src">assets/src/liveState.ts onFile · EditorDrawer</p>
+        </div>
+      </article>
+    </section>
+
+    <section id="concurrency">
+      <h2>5. Git + dev server concurrency</h2>
+      <div class="callout bad">
+        <strong class="label">This is the product bug</strong>
+        <p>
+          A developer’s normal loop is: start the dev server, edit, commit, push, keep the
+          server running. Sunlight currently makes that illegal. The lock is not required by
+          Git. It is an artifact of one GenServer owning both the Port and the Git task.
+        </p>
+      </div>
+      <h3>What actually conflicts</h3>
+      <table>
+        <thead>
+          <tr><th>Left</th><th>Right</th><th>Conflict?</th><th>Rebuild rule</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Long-running command (Vite, mix, tests)</td>
+            <td>status / diff / log / read file</td>
+            <td>No</td>
+            <td class="keep">Always concurrent</td>
+          </tr>
+          <tr>
+            <td>Long-running command</td>
+            <td>stage / unstage / commit / fetch / pull / push</td>
+            <td>Rare (index.lock)</td>
+            <td class="keep">Concurrent. Retry index.lock with backoff. Surface Git’s error if still locked.</td>
+          </tr>
+          <tr>
+            <td>Long-running command</td>
+            <td>checkout / merge / rebase / reset / clean</td>
+            <td>Yes, worktree</td>
+            <td class="change">Allow, but confirm. Do not disable the button behind a global busy flag.</td>
+          </tr>
+          <tr>
+            <td>Mutating Git A</td>
+            <td>Mutating Git A</td>
+            <td>Yes</td>
+            <td class="keep">Serialize <em>mutating Git only</em> per repo. Queue, do not reject.</td>
+          </tr>
+          <tr>
+            <td>Repo A anything</td>
+            <td>Repo B anything</td>
+            <td>No</td>
+            <td class="keep">Fully isolated. Never one global mailbox.</td>
+          </tr>
+          <tr>
+            <td>Command stdout</td>
+            <td>UI rendering</td>
+            <td>Only if mis-designed</td>
+            <td class="keep">Append-only events. Never patch the whole workspace.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Target lock policy</h3>
+      <pre><code>per repository:
+  git_write_queue   // stage, commit, push, fetch, branch, stash, …
+  git_read_pool     // status, diff, log, ls-files, grep  (N concurrent, cap 2)
+  command_session   // 0..1 long-running process group (Job Object / process group)
+  file_io           // read/write editor files; never waits on git_write_queue
+
+close repository:
+  allowed while command runs IF user confirms stop-or-detach
+  mutating git drains the write queue first</code></pre>
+      <p>
+        Windows: put the command in a Job Object so Stop kills the tree (today’s
+        <code>taskkill /T /F</code> is the right idea). Unix: start a new process group and
+        signal the group. Do not hold a GenServer/actor mailbox while waiting on Git.
+      </p>
+    </section>
+
+    <section id="files">
+      <h2>6. File-open UX</h2>
+      <p>
+        Opening files is the other workflow that feels unfinished. The visual file tree is fine.
+        The interaction model is not.
+      </p>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Today</h3>
+          <ul>
+            <li>Add repo by pasting a path. No folder picker.</li>
+            <li>Files tab calls <code>git ls-files -co</code>, sends the full list, builds a tree on the client.</li>
+            <li>Click file → <code>request_file</code> through Workspace + Repository, then a modal drawer.</li>
+            <li>One open file per repo. Opening another replaces it.</li>
+            <li>“Open” on the row uses OS default (<code>cmd start</code> / <code>open</code> / <code>xdg-open</code>).</li>
+            <li>Content search is <code>git grep --no-index</code> on the Repository process.</li>
+            <li>Status-list files only open a diff, not the file.</li>
+            <li>Symlinks refused. Binary/non-UTF-8 refused. 1 MiB cap.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Rebuild</h3>
+          <ul>
+            <li>Native “Add repository” folder dialog. Keep paste + recents.</li>
+            <li>Quick open (<kbd>Ctrl/Cmd+P</kbd>) over the active column.</li>
+            <li>Click a changed file: diff stays default; a second action opens the file.</li>
+            <li>Editor tabs per repo (or a persistent pane), not a single keyed slot.</li>
+            <li>“Open outside” targets Cursor, then VS Code, then OS default. Remember the choice.</li>
+            <li>Virtualized tree. Do not ship 50k paths over IPC until filtered.</li>
+            <li>File reads bypass the Git write queue.</li>
+            <li>Watch the open file for external edits; prompt on dirty conflict.</li>
+            <li>Keep the path jail, UTF-8 check, and size cap. Raise cap only for view-only.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout info">
+        <strong class="label">Drawer vs pane</strong>
+        <p>
+          Keep the existing drawer chrome if it still feels like Sunlight. Change the
+          <em>behavior</em>: tabs inside the drawer, keyboard open, and do not block Git
+          buttons while a file is open. Visual continuity matters more than whether the editor
+          is a right drawer or a split.
+        </p>
+      </div>
+    </section>
+
+    <section id="footprint">
+      <h2>7. RAM and CPU</h2>
+      <p>
+        The current release already tries to be small: <code>rel/vm.args.eex</code> pins
+        <code>+S 2:2</code>, one dirty CPU scheduler, one IO scheduler, and disables
+        scheduler busy-wait. That is the right instinct applied to the wrong VM.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Process</th><th>Idle today (order of magnitude)</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Rust tray</td>
+            <td>10–25 MiB</td>
+            <td>winit event loop for a menu icon.</td>
+          </tr>
+          <tr>
+            <td>BEAM release</td>
+            <td>40–100 MiB</td>
+            <td>Even with tiny schedulers. Grows with N repo snapshots in RAM.</td>
+          </tr>
+          <tr>
+            <td>Browser tab</td>
+            <td>80–200 MiB</td>
+            <td>Usually the largest cost. Separate Chromium/Edge process.</td>
+          </tr>
+          <tr>
+            <td>Polling Git</td>
+            <td>CPU spikes every 30s × N</td>
+            <td>6–9 processes per full snapshot. Worse if the watcher were on.</td>
+          </tr>
+          <tr>
+            <td>Dev-server logs</td>
+            <td>CPU + GC while running</td>
+            <td>JSONDiff of workspace on every Port data message.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Typical always-on cost: <strong>130–300 MiB</strong> plus Git. Target always-on cost
+        with a few repos idle: <strong>under 80 MiB RSS</strong> for the Sunlight process on
+        Windows (WebView2 shared with Edge), tray in-process, no BEAM, no extra browser tab.
+        User-started dev servers do not count against Sunlight.
+      </p>
+      <h3>CPU rules for the rebuild</h3>
+      <ul>
+        <li>No periodic Git if a recursive watcher is healthy. Poll only as fallback (60s+).</li>
+        <li>Debounce watcher events (250ms is fine). Ignore <code>node_modules</code>, <code>.git/objects</code>, build dirs.</li>
+        <li>Incremental status: run <code>git status</code> first; fetch history/refs only when HEAD, upstream, or ref files change.</li>
+        <li>Terminal: binary/text stream with client-side ring buffer. Server does not retain 32 KiB in workspace state.</li>
+        <li>Do not clone full repo snapshots to every listener. Push typed events.</li>
+      </ul>
+    </section>
+
+    <section id="stack">
+      <h2>8. Recommended stack</h2>
+      <div class="callout good">
+        <strong class="label">Primary recommendation</strong>
+        <p>
+          <strong>Tauri 2 + Rust 2024 + SolidJS 1.9 + the existing CSS.</strong>
+          One Windows/macOS process. WebView2 / WKWebView. Native dialogs. Tray plugin.
+          IPC instead of Phoenix sockets. Git still invoked as the system <code>git</code>.
+        </p>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Option</th><th>Idle RAM</th><th>Fits this product?</th><th>Decision</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tauri 2 + Rust + Solid 1.9</td>
+            <td>Lowest practical</td>
+            <td>Native window, dialogs, tray, process control, keep CSS UI</td>
+            <td class="keep">Choose</td>
+          </tr>
+          <tr>
+            <td>Rust axum daemon + browser tab</td>
+            <td>Tiny daemon, fat tab</td>
+            <td>Keeps the current host model; still no folder picker</td>
+            <td class="drop">Reject</td>
+          </tr>
+          <tr>
+            <td>Wails / Go</td>
+            <td>Similar, GC</td>
+            <td>Fine, but Rust already exists in-tree for the tray</td>
+            <td class="change">Backup</td>
+          </tr>
+          <tr>
+            <td>Electron</td>
+            <td>Worst</td>
+            <td>Native UX, terrible footprint</td>
+            <td class="drop">Reject</td>
+          </tr>
+          <tr>
+            <td>Keep Elixir, fix locks</td>
+            <td>Still a BEAM + tab</td>
+            <td>Can fix concurrency, cannot hit min RAM</td>
+            <td class="drop">Reject for rebuild goal</td>
+          </tr>
+          <tr>
+            <td>Iced / egui / Slint</td>
+            <td>Excellent</td>
+            <td>Throws away the UI you like</td>
+            <td class="drop">Reject</td>
+          </tr>
+          <tr>
+            <td>Solid 2 beta / Svelte 5 / Preact</td>
+            <td>Similar JS</td>
+            <td>Solid 1.9 is stable and closest to current JSX</td>
+            <td class="keep">Solid 1.9 only</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Why not Elixir</h3>
+      <p>
+        Elixir is excellent at many concurrent sockets. This app has one user, one machine,
+        a handful of repos, and a lot of OS processes. The BEAM’s strengths (soft real-time,
+        huge connection counts, hot upgrade) are unused. Its costs (VM, release, schedulers,
+        extra language for Windows process/Job Object/WebView work) are paid every hour the
+        tray is running. The tray is already Rust. Put the core there.
+      </p>
+      <h3>Why not Solid 2</h3>
+      <p>
+        Solid 1.9 is production. The current code already fights 2.0 APIs
+        (<code>onSettled</code>, two-arg effects, next Vite plugin, HMR off). Rebuild on 1.9.
+        Revisit 2.0 only after it is stable and the core is boring.
+      </p>
+      <h3>Why keep the Git binary</h3>
+      <p>
+        <code>git2</code> / libgit2 is tempting for RAM, but it does not speak Git Credential
+        Manager, SSH agent, or hooks the same way. Sunlight’s README correctly delegates auth
+        to the installed client. Spawn <code>git</code> with <code>GIT_TERMINAL_PROMPT=0</code>
+        as today. Cap concurrent Git processes. Parse porcelain in Rust (port the existing parsers).
+      </p>
+    </section>
+
+    <section id="target">
+      <h2>9. Target architecture</h2>
+      <pre><code>sunlight.exe  (Tauri 2)
+├─ WebView          Solid 1.9 + ported styles.css
+├─ Tray             in-process
+├─ Core
+│  ├─ workspace     paths, recents, order, persist
+│  ├─ repo[id]
+│  │  ├─ git_write_queue
+│  │  ├─ git_read_pool
+│  │  ├─ watcher (notify / ReadDirectoryChangesW)
+│  │  ├─ snapshot cache (status, refs, commits)
+│  │  └─ command_session (Job Object / process group)
+│  └─ event_bus     typed events to the UI
+└─ OS
+   ├─ git.exe
+   ├─ user commands (bun, node, mix, …)
+   └─ folder / file dialogs</code></pre>
+      <h3>Module split (frontend)</h3>
+      <p>
+        Split the 1850-line <code>App.tsx</code> without changing look:
+      </p>
+      <ul>
+        <li><code>shell/</code> topbar, connection, add-repo</li>
+        <li><code>sidebar/</code> repo rail + find</li>
+        <li><code>column/</code> header, branch, changes, commit form</li>
+        <li><code>commands/</code> terminal panel, port conflict</li>
+        <li><code>history/</code> graph + checkout</li>
+        <li><code>files/</code> tree, quick open, search</li>
+        <li><code>drawer/</code> diff + editor tabs</li>
+      </ul>
+      <h3>Module split (Rust)</h3>
+      <ul>
+        <li><code>git/</code> spawn, timeouts, porcelain parsers (port Elixir tests)</li>
+        <li><code>repo/</code> actor, queues, snapshot cache, watcher debounce</li>
+        <li><code>cmd/</code> spawn, PTY later (not v1), job object, port-in-use</li>
+        <li><code>fs/</code> jail, read/write text, open-outside</li>
+        <li><code>workspace/</code> JSON persist with temp + backup</li>
+        <li><code>ipc/</code> commands + events; no full-state replica</li>
+      </ul>
+      <h3>Do not port</h3>
+      <ul>
+        <li>Phoenix Endpoint, Router, PageController HTML shell</li>
+        <li><code>phx-live-state</code> and JSONDiff</li>
+        <li>Bandit, PubSub-as-UI-bus</li>
+        <li>Mix release + Scheduled Task launching a second binary, unless install still needs a watchdog. Prefer one auto-start exe.</li>
+        <li>Solid 2 / babel-preset-solid beta / solid-refresh next</li>
+      </ul>
+    </section>
+
+    <section id="protocol">
+      <h2>10. Event model</h2>
+      <p>
+        LiveState’s “one document, patch it” model is wrong for terminals and file trees.
+        Use commands (UI → core) and events (core → UI). The UI holds view state.
+      </p>
+      <h3>Commands (examples)</h3>
+      <pre><code>workspace.add { path } | workspace.add_pick_folder
+workspace.remove { id }
+workspace.reorder { ids }
+repo.refresh { id }
+repo.git { id, op, payload }          // stage, commit, push, …
+repo.command.run { id, line }
+repo.command.stop { id }
+repo.command.replace_port { id }
+files.tree { id, prefix? }
+files.search { id, query }
+files.open { id, path }
+files.save { id, path, content }
+files.open_outside { id, path, target? }  // cursor | vscode | os
+diff.request { id, path, staged }</code></pre>
+      <h3>Events (examples)</h3>
+      <pre><code>workspace.snapshot          // rare: connect / persist
+repo.summary { id, status, head, ahead, behind, busy_git? }
+repo.refs { id, branches, remotes, stashes }
+repo.history { id, commits }
+repo.git.progress { id, op, phase }
+repo.git.done { id, op, notice?, error? }
+cmd.started { id, line, pid }
+cmd.chunk { id, bytes }     // UI appends to a ring buffer
+cmd.exited { id, code, port_conflict? }
+files.tree_page { id, paths, done }
+files.content { id, path, content, mtime }
+files.changed_on_disk { id, path, mtime }</code></pre>
+      <p>
+        On connect, send a compact workspace snapshot (ids, names, paths, last summaries).
+        Do not send every file path or the terminal buffer until that column needs it.
+      </p>
+    </section>
+
+    <section id="plan">
+      <h2>11. Rebuild plan</h2>
+      <p>
+        New repository or <code>apps/sunlight-next</code> in this repo is fine. Do not try to
+        strangler-fig Phoenix into Tauri. Port tests and CSS. Cut over when parity is real.
+      </p>
+      <ol>
+        <li>
+          <strong>Scaffold.</strong> Tauri 2 app, Solid 1.9, port <code>styles.css</code>,
+          empty columns, tray, loopback-free (no HTTP server). Persist workspace JSON in the
+          same LocalAppData paths so users do not lose recents.
+        </li>
+        <li>
+          <strong>Git read path.</strong> Port status/ref/commit parsers with the existing
+          ExUnit fixtures translated to Rust tests. One repo column showing status + history.
+        </li>
+        <li>
+          <strong>Git write queue.</strong> Stage, commit, push, fetch, branch, stash, merge
+          continue/abort. Queue mutating ops. Never a global busy that disables the terminal.
+        </li>
+        <li>
+          <strong>Command session.</strong> Run/stop, Job Object, port conflict + Replace Port,
+          append-only chunks. Prove: <code>bun run dev</code> up, then commit and push in the
+          same column.
+        </li>
+        <li>
+          <strong>Watcher.</strong> Debounced, filtered. Incremental snapshot. Poll fallback.
+        </li>
+        <li>
+          <strong>Files.</strong> Native add-folder, quick open, tree virtualization, editor
+          tabs, open-outside to Cursor, dirty-file watch.
+        </li>
+        <li>
+          <strong>Parity pass.</strong> Diff drawer, graph, publish/upstream, undo last commit
+          (keep current revert-not-reset semantics), discard confirmations.
+        </li>
+        <li>
+          <strong>Install.</strong> One signed exe, Start Menu, login item. Retire Mix release,
+          <code>Install-Sunlight.ps1</code> BEAM staging, and the extra tray supervisor unless
+          still needed as a tiny watchdog.
+        </li>
+      </ol>
+      <div class="callout warn">
+        <strong class="label">Parity traps</strong>
+        <p>
+          Undo last commit is a <code>git revert</code>, not <code>reset --soft</code>. Commit
+          with nothing staged does <code>add -A</code> then commit. Windows argv cannot contain
+          raw tabs in <code>for-each-ref --format</code> (the Elixir code uses <code>%09</code>
+          on purpose). Port those behaviors; do not “simplify” them.
+        </p>
+      </div>
+    </section>
+
+    <section id="accept">
+      <h2>12. Acceptance criteria</h2>
+      <p>The rebuild is done when all of the following are true.</p>
+      <ul>
+        <li><span class="must">MUST</span> look like Sunlight: same column workspace, colors, graph, Commands/Changes/History/Files.</li>
+        <li><span class="must">MUST</span> allow commit and push while a command is running in that repository.</li>
+        <li><span class="must">MUST</span> allow a command to start while a fetch/push is in flight (queue Git writes; do not reject the command).</li>
+        <li><span class="must">MUST</span> isolate repositories: work in A never waits on B.</li>
+        <li><span class="must">MUST</span> open a folder with a native dialog, and still accept a pasted path.</li>
+        <li><span class="must">MUST</span> open more than one file per repo without discarding the previous buffer unless the user closes it.</li>
+        <li><span class="must">MUST</span> keep Git authentication on the installed Git client.</li>
+        <li><span class="must">MUST</span> stay local-only; no bind on <code>0.0.0.0</code>.</li>
+        <li><span class="must">MUST</span> use SolidJS 1.x (or later stable), not 2.0 beta.</li>
+        <li><span class="should">SHOULD</span> idle under ~80 MiB RSS on Windows with 3 small repos and no command running.</li>
+        <li><span class="should">SHOULD</span> use a file watcher, not 30s polling, as the primary refresh.</li>
+        <li><span class="should">SHOULD</span> stream command output without copying the full workspace over IPC.</li>
+        <li><span class="should">SHOULD</span> offer Open in Cursor / VS Code / OS.</li>
+        <li><span class="may">MAY</span> add a real PTY later. v1 can stay “one command line + stdout”.</li>
+        <li><span class="may">MAY</span> keep the Mix app around as a reference until cutover, then archive it.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Generated from a source review of the Sunlight tree on 2026-08-13.
+      Primary files: <code>lib/sunlight/workspace.ex</code>, <code>lib/sunlight/repository.ex</code>,
+      <code>lib/sunlight/git.ex</code>, <code>lib/sunlight_web/channels/workspace_channel.ex</code>,
+      <code>assets/src/App.tsx</code>, <code>assets/src/liveState.ts</code>,
+      <code>assets/package.json</code>, <code>native/sunlight-tray</code>, <code>README.md</code>.
+    </footer>
+  </div>
+</body>
+</html>

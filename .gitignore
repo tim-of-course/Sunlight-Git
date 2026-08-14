@@ -1,2 +1,5 @@
 node_modules
 dist
+src-tauri/target
+src-tauri/gen
+src-tauri/app-icon.png

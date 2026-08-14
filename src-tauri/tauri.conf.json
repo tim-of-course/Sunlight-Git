@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sunlight-tauri",
+  "productName": "Sunlight",
   "version": "0.1.0",
   "identifier": "com.sunlight.app",
   "build": {
@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "sunlight-tauri",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "Sunlight",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 520
       }
     ],
     "security": {
