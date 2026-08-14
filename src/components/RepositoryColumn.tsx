@@ -18,6 +18,7 @@ export function RepositoryColumn(props: {
   onOpenFile: (path: string) => void;
   onOpenExternalFile: (path: string) => void;
   onOpenInCursor: (path: string) => void;
+  onCreateFile: (path: string) => void;
   onColumnRef: (element: HTMLElement) => void;
 }) {
   const [commitMessage, setCommitMessage] = createSignal("");
@@ -733,6 +734,7 @@ export function RepositoryColumn(props: {
                 onOpenExternal={props.onOpenExternalFile}
                 onOpenInCursor={props.onOpenInCursor}
                 onOpen={props.onOpenFile}
+                onCreateFile={props.onCreateFile}
               />
             }
           >

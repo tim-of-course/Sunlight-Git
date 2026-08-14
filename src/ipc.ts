@@ -86,6 +86,10 @@ export async function saveFile(id: string, path: string, content: string): Promi
   return invoke("save_file", { id, path, content });
 }
 
+export async function createFile(id: string, path: string): Promise<FileContentResult> {
+  return invoke("create_file", { id, path });
+}
+
 export async function openFileExternal(
   id: string,
   path: string,

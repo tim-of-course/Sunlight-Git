@@ -3,6 +3,7 @@ import {
   buildFileTree,
   directoryDefaultExpanded,
   filterFilePaths,
+  joinRepoFilePath,
   splitHighlightedText
 } from "./fileBrowser";
 
@@ -62,6 +63,28 @@ describe("buildFileTree", () => {
 
   it("defaults directory entries to collapsed", () => {
     expect(directoryDefaultExpanded).toBe(false);
+  });
+});
+
+describe("joinRepoFilePath", () => {
+  it("creates a file at the repository root", () => {
+    expect(joinRepoFilePath("", "README.md")).toBe("README.md");
+    expect(joinRepoFilePath("", "  notes.md  ")).toBe("notes.md");
+  });
+
+  it("creates a file inside a folder", () => {
+    expect(joinRepoFilePath("src", "App.tsx")).toBe("src/App.tsx");
+    expect(joinRepoFilePath("src/components", "Button.tsx")).toBe("src/components/Button.tsx");
+  });
+
+  it("allows nested names relative to the chosen folder", () => {
+    expect(joinRepoFilePath("src", "ui/Button.tsx")).toBe("src/ui/Button.tsx");
+  });
+
+  it("rejects empty, parent, and invalid names", () => {
+    expect(joinRepoFilePath("", "")).toBeNull();
+    expect(joinRepoFilePath("src", "..")).toBeNull();
+    expect(joinRepoFilePath("src", "foo:bar")).toBeNull();
   });
 });
 

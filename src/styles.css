@@ -1188,10 +1188,6 @@ textarea {
   align-items: stretch;
 }
 
-.tree-entry.directory {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .tree-open-external {
   min-width: 42px;
   min-height: 27px;
@@ -1241,6 +1237,43 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-new-file {
+  display: grid;
+  width: 100%;
+  min-height: 27px;
+  grid-template-columns: 12px 17px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding-top: 2px;
+  padding-right: 6px;
+  padding-bottom: 2px;
+}
+
+.tree-new-file input {
+  min-height: 22px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.file-tree-panel button.tree-new-root {
+  width: 100%;
+  min-height: 27px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9aa4b7;
+  grid-template-columns: minmax(0, 1fr);
+  text-align: left;
+}
+
+.file-tree-panel button.tree-new-root:hover:not(:disabled),
+.file-tree-panel button.tree-new-root:focus-visible {
+  border: 0;
+  background: #232936;
+  color: #f1f3f7;
 }
 
 .tree-caret {

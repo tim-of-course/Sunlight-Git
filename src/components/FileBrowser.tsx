@@ -3,6 +3,7 @@ import {
   buildFileTree,
   directoryDefaultExpanded,
   filterFilePaths,
+  joinRepoFilePath,
   type FileTreeNode
 } from "../fileBrowser";
 import type { FileSearchResult } from "../types";
@@ -16,9 +17,11 @@ export function FileBrowser(props: {
   onOpen: (path: string) => void;
   onOpenExternal: (path: string) => void;
   onOpenInCursor: (path: string) => void;
+  onCreateFile: (path: string) => void;
 }) {
   const [filterQuery, setFilterQuery] = createSignal("");
   const [contentQuery, setContentQuery] = createSignal("");
+  const [creatingAtRoot, setCreatingAtRoot] = createSignal(false);
   const trimmedContentQuery = createMemo(() => contentQuery().trim());
   const activeSearch = createMemo(() =>
     props.fileSearch?.query === trimmedContentQuery() ? props.fileSearch : null
@@ -36,6 +39,12 @@ export function FileBrowser(props: {
     if (searchPending()) return "Searching contents...";
     return "No files match";
   });
+  const createFileIn = (folder: string, name: string) => {
+    const path = joinRepoFilePath(folder, name);
+    if (!path) return false;
+    props.onCreateFile(path);
+    return true;
+  };
 
   createEffect(() => {
     const query = trimmedContentQuery();
@@ -65,7 +74,11 @@ export function FileBrowser(props: {
           </div>
         </header>
         <div class="file-tree">
-          <Show when={tree().length > 0} fallback={<p class="history-empty">{emptyText()}</p>}>
+          <Show when={tree().length > 0} fallback={
+            <Show when={!creatingAtRoot()}>
+              <p class="history-empty">{emptyText()}</p>
+            </Show>
+          }>
             <FileTree
               nodes={tree()}
               selectedPath={props.selectedPath}
@@ -73,6 +86,28 @@ export function FileBrowser(props: {
               onOpen={props.onOpen}
               onOpenExternal={props.onOpenExternal}
               onOpenInCursor={props.onOpenInCursor}
+              onCreateFile={createFileIn}
+            />
+          </Show>
+          <Show
+            when={creatingAtRoot()}
+            fallback={
+              <button
+                type="button"
+                class="tree-row tree-new-root"
+                title="Create a file in the repository root"
+                onClick={() => setCreatingAtRoot(true)}
+              >
+                New file in Root
+              </button>
+            }
+          >
+            <NewFileRow
+              depth={0}
+              onSubmit={(name) => {
+                if (createFileIn("", name)) setCreatingAtRoot(false);
+              }}
+              onCancel={() => setCreatingAtRoot(false)}
             />
           </Show>
         </div>
@@ -89,6 +124,7 @@ function FileTree(props: {
   onOpen: (path: string) => void;
   onOpenExternal: (path: string) => void;
   onOpenInCursor: (path: string) => void;
+  onCreateFile: (folder: string, name: string) => boolean;
 }) {
   return (
     <For each={props.nodes}>
@@ -101,6 +137,7 @@ function FileTree(props: {
           onOpen={props.onOpen}
           onOpenExternal={props.onOpenExternal}
           onOpenInCursor={props.onOpenInCursor}
+          onCreateFile={props.onCreateFile}
         />
       )}
     </For>
@@ -115,10 +152,24 @@ function FileTreeEntry(props: {
   onOpen: (path: string) => void;
   onOpenExternal: (path: string) => void;
   onOpenInCursor: (path: string) => void;
+  onCreateFile: (folder: string, name: string) => boolean;
 }) {
   const [expanded, setExpanded] = createSignal(directoryDefaultExpanded);
+  const [creating, setCreating] = createSignal(false);
   const isDirectory = () => props.node.kind === "directory";
-  const open = () => isDirectory() && (expanded() || props.autoExpandDirectories);
+  const containsSelected = () => {
+    const selected = props.selectedPath;
+    return Boolean(
+      isDirectory() &&
+        selected &&
+        (selected === props.node.path || selected.startsWith(`${props.node.path}/`))
+    );
+  };
+  const open = () => isDirectory() && (expanded() || props.autoExpandDirectories || creating());
+
+  createEffect(() => {
+    if (containsSelected()) setExpanded(true);
+  });
 
   return (
     <>
@@ -145,8 +196,22 @@ function FileTreeEntry(props: {
           </span>
           <span>{props.node.name}</span>
         </button>
-        <Show when={!isDirectory()}>
-          <div class="tree-file-actions">
+        <div class="tree-file-actions">
+          <Show when={isDirectory()}>
+            <button
+              type="button"
+              class="tree-open-external"
+              title={`Create a file in ${props.node.path}`}
+              aria-label={`Create a file in ${props.node.path}`}
+              onClick={() => {
+                setExpanded(true);
+                setCreating(true);
+              }}
+            >
+              New
+            </button>
+          </Show>
+          <Show when={!isDirectory()}>
             <button
               type="button"
               class="tree-open-external"
@@ -165,10 +230,19 @@ function FileTreeEntry(props: {
             >
               Cursor
             </button>
-          </div>
-        </Show>
+          </Show>
+        </div>
       </div>
       <Show when={open()}>
+        <Show when={creating()}>
+          <NewFileRow
+            depth={props.depth + 1}
+            onSubmit={(name) => {
+              if (props.onCreateFile(props.node.path, name)) setCreating(false);
+            }}
+            onCancel={() => setCreating(false)}
+          />
+        </Show>
         <FileTree
           nodes={props.node.children}
           selectedPath={props.selectedPath}
@@ -177,8 +251,54 @@ function FileTreeEntry(props: {
           onOpen={props.onOpen}
           onOpenExternal={props.onOpenExternal}
           onOpenInCursor={props.onOpenInCursor}
+          onCreateFile={props.onCreateFile}
         />
       </Show>
     </>
+  );
+}
+
+function NewFileRow(props: {
+  depth: number;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = createSignal("");
+
+  const submit = () => {
+    const value = name().trim();
+    if (!value) return;
+    props.onSubmit(value);
+  };
+
+  return (
+    <div class="tree-entry new-file">
+      <form
+        class="tree-new-file"
+        style={`padding-left: ${8 + props.depth * 13}px`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+      >
+        <span class="tree-caret" />
+        <span class="tree-icon file">F</span>
+        <input
+          ref={(element) => {
+            if (element) queueMicrotask(() => element.focus());
+          }}
+          aria-label="New file name"
+          placeholder="file name"
+          value={name()}
+          onInput={(event) => setName(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              props.onCancel();
+            }
+          }}
+        />
+      </form>
+    </div>
   );
 }

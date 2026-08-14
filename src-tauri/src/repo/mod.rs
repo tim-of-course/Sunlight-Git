@@ -199,6 +199,19 @@ impl Repo {
         })
     }
 
+    pub fn create_file(&self, file: &str, app: &AppHandle) -> Result<FileContentResult, String> {
+        let (path, content, size, mtime) = crate::files::create_text_file(&self.path, file)?;
+        let _ = self.refresh();
+        let _ = app.emit("repo-updated", self.snapshot());
+        Ok(FileContentResult {
+            id: self.id.clone(),
+            path,
+            content,
+            size,
+            mtime,
+        })
+    }
+
     pub fn open_external(&self, file: &str, target: Option<&str>) -> Result<(), String> {
         crate::files::open_external(&self.path, file, target)
     }

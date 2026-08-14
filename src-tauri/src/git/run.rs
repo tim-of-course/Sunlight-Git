@@ -305,12 +305,11 @@ pub fn diff(path: &Path, file: &str, staged: bool) -> Result<(String, bool, bool
 }
 
 pub fn files(path: &Path) -> Result<Vec<String>, String> {
-    let output = run_read(path, &["ls-files", "-co", "--exclude-standard", "-z"])?;
-    let mut files: Vec<String> = output
-        .split('\0')
-        .filter(|item| !item.is_empty())
-        .map(|item| item.to_string())
-        .collect();
+    let mut files = nul_paths(&run_read(
+        path,
+        &["ls-files", "-co", "--exclude-standard", "-z"],
+    )?);
+    files.extend(ignored_leaf_files(path)?);
     files.sort();
     files.dedup();
     Ok(files)
@@ -337,14 +336,70 @@ pub fn search_files(path: &Path, query: &str) -> Result<Vec<String>, String> {
         DEFAULT_READ_OUTPUT_LIMIT,
         &[0, 1],
     )?;
-    let mut files: Vec<String> = output
-        .split('\0')
-        .filter(|item| !item.is_empty())
-        .map(|item| item.trim_start_matches("./").to_string())
-        .collect();
+    let mut files = nul_paths(&output);
+    files.extend(search_paths(path, query, &ignored_leaf_files(path)?)?);
     files.sort();
     files.dedup();
     Ok(files)
+}
+
+fn ignored_leaf_files(path: &Path) -> Result<Vec<String>, String> {
+    let output = run_read(
+        path,
+        &[
+            "ls-files",
+            "-o",
+            "-i",
+            "--exclude-standard",
+            "--directory",
+            "-z",
+        ],
+    )?;
+    Ok(nul_paths(&output)
+        .into_iter()
+        .filter(|file| !file.ends_with('/'))
+        .collect())
+}
+
+fn search_paths(path: &Path, query: &str, search_paths: &[String]) -> Result<Vec<String>, String> {
+    if search_paths.is_empty() {
+        return Ok(vec![]);
+    }
+    let mut matches = Vec::new();
+    for chunk in search_paths.chunks(32) {
+        let mut args = vec![
+            "grep",
+            "-I",
+            "-l",
+            "-i",
+            "-F",
+            "-z",
+            "--no-index",
+            "-e",
+            query,
+            "--",
+        ];
+        args.extend(chunk.iter().map(String::as_str));
+        match run(
+            path,
+            &args,
+            GIT_READ_TIMEOUT,
+            DEFAULT_READ_OUTPUT_LIMIT,
+            &[0, 1],
+        ) {
+            Ok(output) => matches.extend(nul_paths(&output)),
+            Err(_) => continue,
+        }
+    }
+    Ok(matches)
+}
+
+fn nul_paths(output: &str) -> Vec<String> {
+    output
+        .split('\0')
+        .filter(|item| !item.is_empty())
+        .map(|item| item.trim_start_matches("./").replace('\\', "/"))
+        .collect()
 }
 
 fn operation_state(path: &Path) -> Option<String> {
@@ -361,5 +416,60 @@ fn git_path_exists(path: &Path, name: &str) -> bool {
     match run_read(path, &["rev-parse", "--git-path", name]) {
         Ok(git_path) => path.join(git_path.trim()).exists(),
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_repo() -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "sunlight-git-files-{}-{}",
+            std::process::id(),
+            TEST_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let git = find_git().unwrap();
+        let status = Command::new(git)
+            .args(["init"])
+            .current_dir(&root)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        root
+    }
+
+    #[test]
+    fn lists_gitignored_dotfiles_without_ignored_directories() {
+        let root = temp_repo();
+        fs::write(root.join(".gitignore"), ".dev.vars\nnode_modules/\n").unwrap();
+        fs::write(root.join(".dev.vars"), "SECRET=1\n").unwrap();
+        fs::write(root.join("README.md"), "hello\n").unwrap();
+        fs::create_dir_all(root.join("node_modules").join("pkg")).unwrap();
+        fs::write(
+            root.join("node_modules").join("pkg").join("index.js"),
+            "module.exports = 1;\n",
+        )
+        .unwrap();
+
+        let listed = files(&root).unwrap();
+        assert!(listed.contains(&"README.md".to_string()), "{listed:?}");
+        assert!(listed.contains(&".gitignore".to_string()), "{listed:?}");
+        assert!(listed.contains(&".dev.vars".to_string()), "{listed:?}");
+        assert!(
+            !listed.iter().any(|file| file.starts_with("node_modules")),
+            "{listed:?}"
+        );
+
+        let matches = search_files(&root, "SECRET=1").unwrap();
+        assert!(matches.contains(&".dev.vars".to_string()), "{matches:?}");
+        let _ = fs::remove_dir_all(&root);
     }
 }

@@ -1,6 +1,7 @@
 use crate::error::format_bytes;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::fs::OpenOptions;
+use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
 const FILE_READ_LIMIT: u64 = 1024 * 1024;
@@ -82,6 +83,44 @@ pub fn write_text_file(
     ))
 }
 
+pub fn create_text_file(
+    root: &Path,
+    file: &str,
+) -> Result<(String, String, u64, Option<String>), String> {
+    reject_create_name(file)?;
+    let safe = safe_relative_path(root, file)?;
+    if safe.relative.is_empty() {
+        return Err("File path is required".into());
+    }
+    if safe.full_path.exists() {
+        if safe.full_path.is_dir() {
+            return Err("A folder already exists at that path".into());
+        }
+        return Err("File already exists".into());
+    }
+    if let Some(parent) = safe.full_path.parent() {
+        if parent.exists() && !parent.is_dir() {
+            return Err("Parent path is not a folder".into());
+        }
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(map_io)?;
+        }
+        reject_symlink_path(&normalize_path(root), &safe.full_path)?;
+    }
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&safe.full_path)
+        .map_err(map_io)?;
+    let metadata = fs::metadata(&safe.full_path).map_err(map_io)?;
+    Ok((
+        safe.relative,
+        String::new(),
+        metadata.len(),
+        file_mtime_iso(metadata.modified().ok()),
+    ))
+}
+
 pub fn open_external(root: &Path, file: &str, target: Option<&str>) -> Result<(), String> {
     let safe = safe_relative_path(root, file)?;
     if !safe.full_path.is_file() {
@@ -140,6 +179,40 @@ fn text_content(content: &str) -> Result<(), String> {
         Err("Binary files cannot be edited".into())
     } else {
         Ok(())
+    }
+}
+
+fn reject_create_name(file: &str) -> Result<(), String> {
+    let trimmed = file.trim();
+    if trimmed.is_empty() {
+        return Err("File path is required".into());
+    }
+    if trimmed.ends_with('/') || trimmed.ends_with('\\') {
+        return Err("File name is required".into());
+    }
+    let mut saw_name = false;
+    for component in Path::new(trimmed).components() {
+        match component {
+            Component::Normal(name) => {
+                let name = name.to_string_lossy();
+                if name.is_empty()
+                    || name == "."
+                    || name == ".."
+                    || name.chars().any(|ch| {
+                        ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*')
+                    })
+                {
+                    return Err("File name is invalid".into());
+                }
+                saw_name = true;
+            }
+            _ => return Err("File path must be relative".into()),
+        }
+    }
+    if saw_name {
+        Ok(())
+    } else {
+        Err("File name is required".into())
     }
 }
 
@@ -225,4 +298,82 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
 
 fn map_io(error: std::io::Error) -> String {
     error.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEST_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_root() -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "sunlight-create-file-{}-{}",
+            std::process::id(),
+            TEST_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn creates_a_file_at_repo_root() {
+        let root = temp_root();
+        let (path, content, size, _) = create_text_file(&root, "notes.md").unwrap();
+        assert_eq!(path, "notes.md");
+        assert_eq!(content, "");
+        assert_eq!(size, 0);
+        assert_eq!(fs::read_to_string(root.join("notes.md")).unwrap(), "");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn creates_a_file_in_an_existing_folder() {
+        let root = temp_root();
+        fs::create_dir_all(root.join("src")).unwrap();
+        let (path, _, _, _) = create_text_file(&root, "src/App.tsx").unwrap();
+        assert_eq!(path, "src/App.tsx");
+        assert!(root.join("src").join("App.tsx").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn creates_missing_parent_folders() {
+        let root = temp_root();
+        let (path, _, _, _) = create_text_file(&root, "src/components/Button.tsx").unwrap();
+        assert_eq!(path, "src/components/Button.tsx");
+        assert!(root.join("src/components/Button.tsx").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_an_existing_file() {
+        let root = temp_root();
+        fs::write(root.join("README.md"), "hello").unwrap();
+        let error = create_text_file(&root, "README.md").unwrap_err();
+        assert_eq!(error, "File already exists");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_path_escape() {
+        let root = temp_root();
+        let error = create_text_file(&root, "../outside.txt").unwrap_err();
+        assert!(
+            error.contains("relative") || error.contains("escapes") || error.contains("invalid"),
+            "{error}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_a_folder_path() {
+        let root = temp_root();
+        let error = create_text_file(&root, "src/").unwrap_err();
+        assert_eq!(error, "File name is required");
+        let _ = fs::remove_dir_all(&root);
+    }
 }

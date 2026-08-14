@@ -103,3 +103,21 @@ function sortFileTree(nodes: FileTreeNode[]) {
 function normalizeQuery(query: string) {
   return query.trim().toLowerCase();
 }
+
+const invalidFileName = /[<>:"|?*\u0000-\u001f]/;
+
+export function joinRepoFilePath(folder: string, name: string) {
+  const parts = [...splitPath(folder), ...splitPath(name)];
+  if (parts.length === 0) return null;
+  if (parts.some((part) => part === "." || part === ".." || invalidFileName.test(part))) {
+    return null;
+  }
+  return parts.join("/");
+}
+
+function splitPath(value: string) {
+  return value
+    .split(/[/\\]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}

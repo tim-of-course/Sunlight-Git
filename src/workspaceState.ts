@@ -174,6 +174,27 @@ export function useWorkspace() {
           setOpenFiles((current) => ({ ...current, [key]: result }));
           break;
         }
+        case "create_file": {
+          const result = await ipc.createFile(id, String(payload.path || ""));
+          const key = fileKey(result.id, result.path);
+          setOpenFiles((current) => ({ ...current, [key]: result }));
+          setActiveFileKey(key);
+          setDrawerMode("edit");
+          if (id) {
+            activeFileBrowsers.add(id);
+            setFileTrees((current) => {
+              const files = current[id] || [];
+              return files.includes(result.path)
+                ? current
+                : { ...current, [id]: [...files, result.path] };
+            });
+            const tree = await ipc.requestFileTree(id);
+            if (activeFileBrowsers.has(id)) {
+              setFileTrees((current) => ({ ...current, [id]: tree.files }));
+            }
+          }
+          break;
+        }
         case "open_file_external":
           await ipc.openFileExternal(
             id,

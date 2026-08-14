@@ -229,6 +229,16 @@ fn save_file(
 }
 
 #[tauri::command]
+fn create_file(
+    state: State<AppState>,
+    app: AppHandle,
+    id: String,
+    path: String,
+) -> Result<FileContentResult, String> {
+    state.repo(&id)?.create_file(&path, &app)
+}
+
+#[tauri::command]
 fn open_file_external(
     state: State<AppState>,
     id: String,
@@ -333,6 +343,7 @@ pub fn run() {
             search_files,
             request_file,
             save_file,
+            create_file,
             open_file_external
         ])
         .run(tauri::generate_context!())

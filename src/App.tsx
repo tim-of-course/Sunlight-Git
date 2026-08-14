@@ -354,6 +354,12 @@ export function App() {
                       target: "cursor"
                     })
                   }
+                  onCreateFile={(filePath) =>
+                    live.send("create_file", {
+                      id: repository().id,
+                      path: filePath
+                    })
+                  }
                   onColumnRef={(element) => setRepositoryElement(repository().id, element)}
                 />
               )}
