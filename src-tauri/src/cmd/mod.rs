@@ -1,6 +1,6 @@
 use crate::types::{CommandChunk, PortConflict, TerminalState};
 use regex::Regex;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -47,6 +47,7 @@ pub fn run_command(
     let mut child = spawn_command(path, &prepared.command)?;
     let os_pid = child.id();
     let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
     #[cfg(windows)]
     let job = windows_job::assign(os_pid).ok();
 
@@ -65,14 +66,12 @@ pub fn run_command(
     });
     drop(guard);
 
-    if let Some(stdout) = stdout {
-        let slot = Arc::clone(slot);
-        let app = app.clone();
-        let repo_id = repo_id.to_string();
-        let path = path.to_path_buf();
-        let original = prepared.original_command.clone();
-        thread::spawn(move || pump_output(slot, app, repo_id, path, original, stdout));
-    }
+    let slot = Arc::clone(slot);
+    let app = app.clone();
+    let repo_id = repo_id.to_string();
+    let path = path.to_path_buf();
+    let original = prepared.original_command.clone();
+    thread::spawn(move || pump_output(slot, app, repo_id, path, original, stdout, stderr));
 
     Ok(())
 }
@@ -120,19 +119,97 @@ pub fn replace_port_command(
     run_command(slot, repo_id, path, &command, app)
 }
 
-fn pump_output(
+fn pump_output<O, E>(
     slot: Arc<Mutex<CommandSlot>>,
     app: AppHandle,
     repo_id: String,
     path: PathBuf,
     command: String,
-    stdout: impl std::io::Read + Send + 'static,
+    stdout: Option<O>,
+    stderr: Option<E>,
+) where
+    O: Read + Send + 'static,
+    E: Read + Send + 'static,
+{
+    let mut readers = Vec::new();
+    if let Some(stdout) = stdout {
+        readers.push(thread::spawn({
+            let slot = Arc::clone(&slot);
+            let app = app.clone();
+            let repo_id = repo_id.clone();
+            move || read_and_emit(stdout, slot, app, repo_id)
+        }));
+    }
+    if let Some(stderr) = stderr {
+        readers.push(thread::spawn({
+            let slot = Arc::clone(&slot);
+            let app = app.clone();
+            let repo_id = repo_id.clone();
+            move || read_and_emit(stderr, slot, app, repo_id)
+        }));
+    }
+    for reader in readers {
+        let _ = reader.join();
+    }
+
+    let (status, port_conflict, footer) = {
+        let mut guard = match slot.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        let status = guard
+            .child
+            .as_mut()
+            .and_then(|tracked| tracked.child.wait().ok())
+            .and_then(|status| status.code());
+        guard.child = None;
+        guard.state.running = false;
+        guard.state.exit_status = status;
+        let footer = format!("\n[exit {}]\n", status.unwrap_or(1));
+        let output = append_output(&guard.state.output, &footer);
+        guard.state.output = output.clone();
+        let port_conflict = if status.unwrap_or(1) != 0 {
+            exit_port_conflict(&path, &command, &output, status.unwrap_or(1))
+        } else {
+            None
+        };
+        guard.state.port_conflict = port_conflict.clone();
+        (status, port_conflict, footer)
+    };
+
+    let _ = app.emit(
+        "cmd-chunk",
+        CommandChunk {
+            id: repo_id.clone(),
+            data: footer,
+        },
+    );
+    let _ = app.emit(
+        "cmd-exited",
+        serde_json::json!({
+            "id": repo_id,
+            "exit_status": status,
+            "port_conflict": port_conflict
+        }),
+    );
+}
+
+fn read_and_emit(
+    stream: impl Read,
+    slot: Arc<Mutex<CommandSlot>>,
+    app: AppHandle,
+    repo_id: String,
 ) {
-    let reader = BufReader::new(stdout);
-    for line in reader.lines() {
-        match line {
-            Ok(text) => {
-                let chunk = format!("{text}\n");
+    let mut reader = BufReader::new(stream);
+    let mut buf = [0_u8; 8192];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(size) => {
+                let chunk = String::from_utf8_lossy(&buf[..size]).into_owned();
+                if chunk.is_empty() {
+                    continue;
+                }
                 if let Ok(mut guard) = slot.lock() {
                     guard.state.output = append_output(&guard.state.output, &chunk);
                 }
@@ -147,87 +224,61 @@ fn pump_output(
             Err(_) => break,
         }
     }
-
-    let (status, port_conflict) = {
-        let mut guard = match slot.lock() {
-            Ok(guard) => guard,
-            Err(_) => return,
-        };
-        let status = guard
-            .child
-            .as_mut()
-            .and_then(|tracked| tracked.child.wait().ok())
-            .and_then(|status| status.code());
-        guard.child = None;
-        guard.state.running = false;
-        guard.state.exit_status = status;
-        let output = append_output(
-            &guard.state.output,
-            &format!("\n[exit {}]\n", status.unwrap_or(1)),
-        );
-        guard.state.output = output.clone();
-        let port_conflict = if status.unwrap_or(1) != 0 {
-            exit_port_conflict(&path, &command, &output, status.unwrap_or(1))
-        } else {
-            None
-        };
-        guard.state.port_conflict = port_conflict.clone();
-        (status, port_conflict)
-    };
-
-    let _ = app.emit(
-        "cmd-exited",
-        serde_json::json!({
-            "id": repo_id,
-            "exit_status": status,
-            "port_conflict": port_conflict
-        }),
-    );
 }
 
 fn spawn_command(path: &Path, command: &str) -> Result<Child, String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let script = format!(
-            "cd /d {} && set GIT_TERMINAL_PROMPT=0 && set NO_COLOR=1 && set TERM=xterm-256color && {} 2>&1",
-            cmd_quote(path),
-            command
-        );
-        Command::new("cmd.exe")
-            .args(["/d", "/c", &script])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+        let mut cmd = Command::new("cmd.exe");
+        cmd.args(["/d", "/s", "/c", command])
+            .current_dir(path)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("NO_COLOR", "1")
+            .env("TERM", "xterm-256color")
             .stdin(Stdio::null())
-            .creation_flags(0x0800_0000)
-            .spawn()
-            .map_err(|error| error.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .creation_flags(0x0800_0000);
+        extend_command_path(&mut cmd);
+        cmd.spawn().map_err(|error| error.to_string())
     }
     #[cfg(not(windows))]
     {
-        let script = format!(
-            "export GIT_TERMINAL_PROMPT=0 NO_COLOR=1 TERM=xterm-256color\ncd {}\n{} 2>&1\n",
-            shell_quote(&path.to_string_lossy()),
-            command
-        );
-        Command::new("sh")
-            .args(["-lc", &script])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+        let mut cmd = Command::new("sh");
+        cmd.args(["-lc", command])
+            .current_dir(path)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("NO_COLOR", "1")
+            .env("TERM", "xterm-256color")
             .stdin(Stdio::null())
-            .spawn()
-            .map_err(|error| error.to_string())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        extend_command_path(&mut cmd);
+        cmd.spawn().map_err(|error| error.to_string())
     }
 }
 
-fn cmd_quote(path: &Path) -> String {
-    let normalized = path.to_string_lossy().replace('/', "\\").replace('"', "\"\"");
-    format!("\"{normalized}\"")
-}
+fn extend_command_path(cmd: &mut Command) {
+    let mut extra = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        extra.push(home.join(".bun").join("bin"));
+        extra.push(home.join(".local").join("bin"));
+        extra.push(home.join("AppData").join("Roaming").join("npm"));
+        extra.push(home.join("AppData").join("Local").join("fnm"));
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        extra.push(PathBuf::from(local).join("fnm"));
+    }
+    extra.push(PathBuf::from(r"C:\Program Files\nodejs"));
+    extra.push(PathBuf::from(r"C:\Program Files\Git\cmd"));
 
-#[cfg(not(windows))]
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\"'\"'"))
+    let current = std::env::var_os("PATH").unwrap_or_default();
+    let mut parts: Vec<PathBuf> = extra.into_iter().filter(|dir| dir.is_dir()).collect();
+    parts.extend(std::env::split_paths(&current));
+    if let Ok(joined) = std::env::join_paths(parts) {
+        cmd.env("PATH", joined);
+    }
 }
 
 fn append_output(output: &str, data: &str) -> String {
