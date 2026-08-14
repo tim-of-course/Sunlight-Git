@@ -1,7 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { Key } from "@solid-primitives/keyed";
 import { useWorkspace } from "./workspaceState";
-import { moveRepository } from "./workspaceOrder";
 import {
   repositoryScrollLeft,
   repositoryVisibility
@@ -34,7 +33,6 @@ export function App() {
   let currentEditorKey: string | null = null;
   let editorDirtyCheckTimer: number | null = null;
   let visibilityFrame: number | null = null;
-  let draggedId: string | null = null;
 
   const editorDirty = () => Boolean(live.activeFile()) && editorDirtyFlag();
   const anyEditorDirty = () =>
@@ -158,17 +156,6 @@ export function App() {
     if (!value) return;
     live.send("add_repository", { path: value });
     setPath("");
-  };
-
-  const dropBefore = (targetId: string) => {
-    if (!draggedId || draggedId === targetId) return;
-    const ids = moveRepository(
-      live.state.repositories.map((repository) => repository.id),
-      draggedId,
-      targetId
-    );
-    live.send("reorder_repositories", { ids });
-    draggedId = null;
   };
 
   const updateRepositoryVisibility = () => {
@@ -312,6 +299,7 @@ export function App() {
             visibleRepositoryIds={visibleRepositoryIds()}
             primaryRepositoryId={primaryRepositoryId()}
             onSelectRepository={scrollToRepository}
+            onReorderRepositories={(ids) => live.send("reorder_repositories", { ids })}
           />
           <main
             class="workspace"
@@ -366,10 +354,6 @@ export function App() {
                       target: "cursor"
                     })
                   }
-                  onDragStart={() => {
-                    draggedId = repository().id;
-                  }}
-                  onDrop={() => dropBefore(repository().id)}
                   onColumnRef={(element) => setRepositoryElement(repository().id, element)}
                 />
               )}

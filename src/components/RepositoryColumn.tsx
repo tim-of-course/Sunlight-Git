@@ -18,8 +18,6 @@ export function RepositoryColumn(props: {
   onOpenFile: (path: string) => void;
   onOpenExternalFile: (path: string) => void;
   onOpenInCursor: (path: string) => void;
-  onDragStart: () => void;
-  onDrop: () => void;
   onColumnRef: (element: HTMLElement) => void;
 }) {
   const [commitMessage, setCommitMessage] = createSignal("");
@@ -200,25 +198,9 @@ export function RepositoryColumn(props: {
   };
 
   return (
-    <article
-      class="repository-column"
-      ref={props.onColumnRef}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        props.onDrop();
-      }}
-    >
+    <article class="repository-column" ref={props.onColumnRef}>
       <header class="repository-header">
         <div class="repository-title">
-          <span
-            class="drag-handle"
-            title="Drag to reorder"
-            draggable="true"
-            onDragStart={props.onDragStart}
-          >
-            ::
-          </span>
           <div>
             <strong title={props.repository.path}>{props.repository.name}</strong>
             <span title={props.repository.path}>{props.repository.path}</span>
