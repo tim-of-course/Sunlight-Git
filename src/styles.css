@@ -614,21 +614,36 @@ textarea {
 .field-row,
 .button-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .field-row > input,
 .field-row > select {
-  flex: 1 1 0;
+  flex: 1 1 8rem;
+  width: 0;
+  min-width: 0;
+}
+
+.field-row > button,
+.button-row > button {
+  flex: 1 1 5.5rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-controls {
   display: grid;
+  min-width: 0;
   gap: 7px;
 }
 
 .remote-buttons button {
-  flex: 1 1 0;
+  flex: 1 1 4.5rem;
 }
 
 .management-panel,
@@ -679,6 +694,7 @@ textarea {
 .management-content {
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 8px 0 0;
   border-top: 1px solid #303642;
 }
@@ -692,6 +708,7 @@ textarea {
   position: relative;
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 10px 2px;
   border-bottom: 1px solid #303642;
 }
