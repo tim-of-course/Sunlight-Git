@@ -132,15 +132,11 @@ textarea {
 }
 
 .brand-mark {
-  display: grid;
+  display: block;
   width: 36px;
   height: 36px;
-  place-items: center;
-  border: 1px solid #765c2c;
   border-radius: 9px;
-  color: #f7ca6f;
-  background: linear-gradient(145deg, #3b3020, #191b21);
-  font-weight: 800;
+  object-fit: cover;
 }
 
 .brand div {

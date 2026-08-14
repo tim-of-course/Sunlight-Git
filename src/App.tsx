@@ -11,6 +11,7 @@ import { EditorDrawer } from "./components/EditorDrawer";
 import { RepositoryColumn } from "./components/RepositoryColumn";
 import { RepositorySidebar } from "./components/RepositorySidebar";
 import { fileBasename, fileKey, formatBytes } from "./ui";
+import logo from "./assets/logo.svg";
 
 type EditorDraft = {
   content: string;
@@ -254,7 +255,7 @@ export function App() {
     <div class="shell">
       <header class="topbar">
         <div class="brand">
-          <span class="brand-mark">S</span>
+          <img class="brand-mark" src={logo} width="36" height="36" alt="Sunlight" />
           <div>
             <strong>Sunlight</strong>
             <span>Shine some light on your work</span>
