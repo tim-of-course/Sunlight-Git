@@ -1,7 +1,7 @@
 {
   "name": "sunlight-tauri",
   "version": "0.1.0",
-  "description": "",
+  "description": "Local multi-repository Git desktop app",
   "type": "module",
   "scripts": {
     "start": "vite",
@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "icons": "bun scripts/render-app-icon.mjs && bun run tauri icon src-tauri/app-icon.png"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "@solid-primitives/keyed": "^1.5.3",
     "@tauri-apps/api": "^2",
