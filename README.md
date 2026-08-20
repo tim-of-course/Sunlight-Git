@@ -1,6 +1,7 @@
 # Sunlight
 
 <img src="src/assets/logo.svg" alt="Sunlight" width="72" height="72">
+<img width="2160" height="1086" alt="Screenshot 2026-08-20 141720" src="https://github.com/user-attachments/assets/680d5280-c5b9-453d-a555-76a62a8183c7" />
 
 A **local multi-repository Git desktop app**. Open several repos side by side, stage and commit, browse history and files, and keep a long-running command (for example `bun run dev`) alive in the same column.
 
