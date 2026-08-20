@@ -107,7 +107,7 @@ fn normalize_paths(paths: &[String]) -> Vec<String> {
         if trimmed.is_empty() {
             continue;
         }
-        let key = trimmed.to_lowercase();
+        let key = path_identity(trimmed);
         if seen.insert(key) {
             out.push(trimmed.to_string());
         }
@@ -138,10 +138,18 @@ fn temp_path(target: &Path) -> PathBuf {
     PathBuf::from(format!("{}.tmp", target.display()))
 }
 
+fn path_identity(path: &str) -> String {
+    if cfg!(windows) || cfg!(target_os = "macos") {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
 pub fn put_recent(recents: &[String], path: &str) -> Vec<String> {
     let mut next = vec![path.to_string()];
     for item in recents {
-        if item.to_lowercase() != path.to_lowercase() {
+        if path_identity(item) != path_identity(path) {
             next.push(item.clone());
         }
     }

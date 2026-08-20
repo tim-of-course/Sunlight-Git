@@ -187,7 +187,12 @@ pub fn repository_id(path: &str) -> String {
     use base64::Engine;
     use sha2::{Digest, Sha256};
 
-    let digest = Sha256::digest(path.to_lowercase().as_bytes());
+    let identity = if cfg!(windows) || cfg!(target_os = "macos") {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    };
+    let digest = Sha256::digest(identity.as_bytes());
     let encoded = URL_SAFE_NO_PAD.encode(digest);
     encoded.chars().take(16).collect()
 }

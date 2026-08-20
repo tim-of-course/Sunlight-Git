@@ -245,8 +245,9 @@ fn spawn_command(path: &Path, command: &str) -> Result<Child, String> {
     }
     #[cfg(not(windows))]
     {
-        let mut cmd = Command::new("sh");
-        cmd.args(["-lc", command])
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
+        let mut cmd = Command::new(shell);
+        cmd.args(["-c", command])
             .current_dir(path)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("NO_COLOR", "1")
@@ -260,21 +261,8 @@ fn spawn_command(path: &Path, command: &str) -> Result<Child, String> {
 }
 
 fn extend_command_path(cmd: &mut Command) {
-    let mut extra = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        extra.push(home.join(".bun").join("bin"));
-        extra.push(home.join(".local").join("bin"));
-        extra.push(home.join("AppData").join("Roaming").join("npm"));
-        extra.push(home.join("AppData").join("Local").join("fnm"));
-    }
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        extra.push(PathBuf::from(local).join("fnm"));
-    }
-    extra.push(PathBuf::from(r"C:\Program Files\nodejs"));
-    extra.push(PathBuf::from(r"C:\Program Files\Git\cmd"));
-
     let current = std::env::var_os("PATH").unwrap_or_default();
-    let mut parts: Vec<PathBuf> = extra.into_iter().filter(|dir| dir.is_dir()).collect();
+    let mut parts = crate::git::extra_bin_dirs();
     parts.extend(std::env::split_paths(&current));
     if let Ok(joined) = std::env::join_paths(parts) {
         cmd.env("PATH", joined);

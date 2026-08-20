@@ -198,9 +198,7 @@ fn reject_create_name(file: &str) -> Result<(), String> {
                 if name.is_empty()
                     || name == "."
                     || name == ".."
-                    || name.chars().any(|ch| {
-                        ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*')
-                    })
+                    || name.chars().any(invalid_file_char)
                 {
                     return Err("File name is invalid".into());
                 }
@@ -213,6 +211,20 @@ fn reject_create_name(file: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err("File name is required".into())
+    }
+}
+
+fn invalid_file_char(ch: char) -> bool {
+    if ch.is_control() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*')
+    }
+    #[cfg(not(windows))]
+    {
+        false
     }
 }
 

@@ -95,7 +95,12 @@ fn parse_headers(token: &str, state: &mut StatusSnapshot) {
             state.oid = None;
             state.unborn = true;
         } else if let Some(oid) = header.strip_prefix("# branch.oid ") {
-            state.oid = Some(oid.to_string());
+            if oid.bytes().all(|byte| byte == b'0') {
+                state.oid = None;
+                state.unborn = true;
+            } else {
+                state.oid = Some(oid.to_string());
+            }
         } else if header == "# branch.head (detached)" {
             state.head = Some("Detached HEAD".into());
             state.detached = true;
@@ -232,6 +237,11 @@ mod tests {
         let detached = parse_status("# branch.oid abc\0# branch.head (detached)\0");
         assert!(unborn.unborn);
         assert_eq!(unborn.head.as_deref(), Some("main"));
+        let zero = parse_status(
+            "# branch.oid 0000000000000000000000000000000000000000\0# branch.head main\0",
+        );
+        assert!(zero.unborn);
+        assert_eq!(zero.oid, None);
         assert!(detached.detached);
         assert_eq!(detached.head.as_deref(), Some("Detached HEAD"));
     }

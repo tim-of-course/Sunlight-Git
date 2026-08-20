@@ -74,17 +74,20 @@ fn workspace_snapshot(state: State<AppState>) -> WorkspaceState {
 
 #[tauri::command]
 fn add_repository(app: AppHandle, state: State<AppState>, path: String) -> Result<WorkspaceState, String> {
-    let canonical = git::canonical_root(&path)?;
+    let (canonical, initialized) = git::bootstrap_root(&path)?;
     let canonical_str = canonical.to_string_lossy().into_owned();
     {
         let repos = state.repos.lock().map_err(|error| error.to_string())?;
-        if repos.iter().any(|repo| {
-            repo.path.to_string_lossy().eq_ignore_ascii_case(&canonical_str)
-        }) {
+        if repos.iter().any(|repo| same_repo_path(&repo.path.to_string_lossy(), &canonical_str)) {
             return Err("Repository is already open".into());
         }
     }
     let repo = Repo::open(canonical)?;
+    if initialized {
+        if let Ok(mut public) = repo.public.write() {
+            public.last_notice = Some("Initialized a new Git repository.".into());
+        }
+    }
     if let Ok(mut handle) = repo.app.lock() {
         *handle = Some(app.clone());
     }
@@ -104,12 +107,20 @@ fn add_repository(app: AppHandle, state: State<AppState>, path: String) -> Resul
 }
 
 #[tauri::command]
-fn add_repository_pick(app: AppHandle, state: State<AppState>) -> Result<WorkspaceState, String> {
-    let folder = app
-        .dialog()
-        .file()
-        .set_title("Add repository")
-        .blocking_pick_folder();
+async fn add_repository_pick(app: AppHandle, state: State<'_, AppState>) -> Result<WorkspaceState, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut picker = app.dialog().file();
+    picker = picker.set_title("Add repository");
+    if let Some(window) = app.get_webview_window("main") {
+        picker = picker.set_parent(&window);
+    }
+    picker.pick_folder(move |folder| {
+        let _ = tx.send(folder);
+    });
+    let folder = match rx.await {
+        Ok(folder) => folder,
+        Err(_) => return Ok(state.snapshot()),
+    };
     let Some(folder) = folder else {
         return Ok(state.snapshot());
     };
@@ -324,7 +335,9 @@ pub fn run() {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
             restore_workspace(&handle, &*state);
-            setup_tray(&handle)?;
+            if let Err(error) = setup_tray(&handle) {
+                eprintln!("Could not create tray icon: {error}");
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -348,4 +361,12 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Sunlight");
+}
+
+fn same_repo_path(left: &str, right: &str) -> bool {
+    if cfg!(windows) || cfg!(target_os = "macos") {
+        left.eq_ignore_ascii_case(right)
+    } else {
+        left == right
+    }
 }

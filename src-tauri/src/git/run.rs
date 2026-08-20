@@ -181,32 +181,109 @@ fn which(name: &str) -> Option<PathBuf> {
         None
     };
 
-    std::env::var_os("PATH").and_then(|paths| {
-        std::env::split_paths(&paths).find_map(|dir| {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-            if let Some(exts) = &path_exts {
-                for ext in exts {
-                    let with_ext = dir.join(format!("{name}{ext}"));
-                    if with_ext.is_file() {
-                        return Some(with_ext);
-                    }
+    let mut dirs: Vec<PathBuf> = extra_bin_dirs();
+    if let Some(paths) = std::env::var_os("PATH") {
+        dirs.extend(std::env::split_paths(&paths));
+    }
+    dirs.into_iter().find_map(|dir| {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        if let Some(exts) = &path_exts {
+            for ext in exts {
+                let with_ext = dir.join(format!("{name}{ext}"));
+                if with_ext.is_file() {
+                    return Some(with_ext);
                 }
             }
-            None
-        })
+        }
+        None
     })
 }
 
+pub fn extra_bin_dirs() -> Vec<PathBuf> {
+    let mut extra = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        extra.push(home.join(".bun").join("bin"));
+        extra.push(home.join(".local").join("bin"));
+        extra.push(home.join(".cargo").join("bin"));
+        extra.push(home.join("AppData").join("Roaming").join("npm"));
+        extra.push(home.join("AppData").join("Local").join("fnm"));
+        extra.push(home.join(".fnm"));
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        extra.push(PathBuf::from(local).join("fnm"));
+    }
+    extra.push(PathBuf::from(r"C:\Program Files\nodejs"));
+    extra.push(PathBuf::from(r"C:\Program Files\Git\cmd"));
+    extra.push(PathBuf::from("/opt/homebrew/bin"));
+    extra.push(PathBuf::from("/opt/homebrew/sbin"));
+    extra.push(PathBuf::from("/usr/local/bin"));
+    extra.push(PathBuf::from("/usr/local/git/bin"));
+    extra.into_iter().filter(|dir| dir.is_dir()).collect()
+}
+
 pub fn canonical_root(path: &str) -> Result<PathBuf, String> {
+    resolve_root(path, false).map(|(path, _)| path)
+}
+
+pub fn bootstrap_root(path: &str) -> Result<(PathBuf, bool), String> {
+    resolve_root(path, true)
+}
+
+fn resolve_root(path: &str, bootstrap: bool) -> Result<(PathBuf, bool), String> {
     let expanded = dunce_expand(path)?;
     if !expanded.is_dir() {
         return Err("Directory does not exist".into());
     }
-    let output = run_read(&expanded, &["rev-parse", "--show-toplevel"])?;
-    Ok(PathBuf::from(output.trim()))
+    match run_read(&expanded, &["rev-parse", "--show-toplevel"]) {
+        Ok(output) => Ok((stable_canonical(PathBuf::from(output.trim())), false)),
+        Err(error) if bootstrap && is_not_a_git_repository(&error) => {
+            run_git(&expanded, &["init", "-q"])?;
+            let output = run_read(&expanded, &["rev-parse", "--show-toplevel"])?;
+            Ok((stable_canonical(PathBuf::from(output.trim())), true))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn is_not_a_git_repository(error: &str) -> bool {
+    error.to_lowercase().contains("not a git repository")
+}
+
+fn empty_history(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    lower.contains("does not have any commits")
+        || lower.contains("bad default revision")
+        || missing_head(&lower)
+}
+
+fn missing_head(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    lower.contains("needed a single revision")
+        || lower.contains("unknown revision")
+        || lower.contains("ambiguous argument 'head'")
+        || lower.contains("ambiguous argument \"head\"")
+}
+
+fn stable_canonical(path: PathBuf) -> PathBuf {
+    let canonical = std::fs::canonicalize(&path).unwrap_or(path);
+    strip_verbatim_prefix(canonical)
+}
+
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            if let Some(unc) = rest.strip_prefix(r"UNC\") {
+                return PathBuf::from(format!(r"\\{unc}"));
+            }
+            return PathBuf::from(rest);
+        }
+    }
+    path
 }
 
 fn dunce_expand(path: &str) -> Result<PathBuf, String> {
@@ -227,8 +304,26 @@ fn dunce_expand(path: &str) -> Result<PathBuf, String> {
 pub fn status(path: &Path) -> Result<crate::git::StatusSnapshot, String> {
     let output = run_read(path, &["status", "--porcelain=v2", "--branch", "-z"])?;
     let mut snapshot = crate::git::parse_status(&output);
+    if !snapshot.unborn && snapshot.oid.is_none() {
+        match head_exists(path) {
+            Ok(true) => {}
+            Ok(false) => {
+                snapshot.unborn = true;
+                snapshot.oid = None;
+            }
+            Err(error) => return Err(error),
+        }
+    }
     snapshot.operation_state = operation_state(path);
     Ok(snapshot)
+}
+
+fn head_exists(path: &Path) -> Result<bool, String> {
+    match run_read(path, &["rev-parse", "--verify", "HEAD"]) {
+        Ok(_) => Ok(true),
+        Err(error) if missing_head(&error) => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 pub fn snapshot(path: &Path) -> Result<crate::git::StatusSnapshot, String> {
@@ -262,7 +357,14 @@ pub fn snapshot_with_status(
     status.commits = if status.unborn {
         vec![]
     } else {
-        commits(path, limits.history_limit)?
+        match commits(path, limits.history_limit) {
+            Ok(commits) => commits,
+            Err(error) if empty_history(&error) => {
+                status.unborn = true;
+                vec![]
+            }
+            Err(error) => return Err(error),
+        }
     };
     Ok(status)
 }
@@ -471,5 +573,86 @@ mod tests {
         let matches = search_files(&root, "SECRET=1").unwrap();
         assert!(matches.contains(&".dev.vars".to_string()), "{matches:?}");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    fn temp_dir() -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "sunlight-git-bootstrap-{}-{}",
+            std::process::id(),
+            TEST_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn bootstraps_a_plain_directory_and_opens_unborn_history() {
+        let root = temp_dir();
+        fs::write(root.join("README.md"), "hello\n").unwrap();
+
+        let without_bootstrap = canonical_root(root.to_str().unwrap()).unwrap_err();
+        assert!(
+            without_bootstrap.to_lowercase().contains("not a git repository"),
+            "{without_bootstrap}"
+        );
+
+        let (path, initialized) = bootstrap_root(root.to_str().unwrap()).unwrap();
+        assert!(initialized);
+        assert!(path.join(".git").exists());
+
+        let snapshot = snapshot(&path).unwrap();
+        assert!(snapshot.unborn, "{snapshot:?}");
+        assert!(snapshot.commits.is_empty());
+        assert!(snapshot.untracked.iter().any(|file| file.path == "README.md"));
+
+        let (same, initialized_again) = bootstrap_root(path.to_str().unwrap()).unwrap();
+        assert!(!initialized_again);
+        assert_eq!(same, path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn snapshots_an_existing_git_repo_with_no_commits() {
+        let root = temp_repo();
+        let snapshot = snapshot(&root).unwrap();
+        assert!(snapshot.unborn, "{snapshot:?}");
+        assert!(snapshot.commits.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn snapshots_a_repo_with_commits_without_marking_unborn() {
+        let root = temp_repo();
+        fs::write(root.join("README.md"), "hello\n").unwrap();
+        let git = find_git().unwrap();
+        let commit = Command::new(git)
+            .args(["add", "README.md"])
+            .current_dir(&root)
+            .status()
+            .unwrap();
+        assert!(commit.success());
+        let commit = Command::new(find_git().unwrap())
+            .args(["-c", "user.name=Sunlight", "-c", "user.email=sunlight@example.com", "commit", "-m", "init"])
+            .current_dir(&root)
+            .status()
+            .unwrap();
+        assert!(commit.success());
+
+        let snapshot = snapshot(&root).unwrap();
+        assert!(!snapshot.unborn, "{snapshot:?}");
+        assert!(snapshot.oid.is_some(), "{snapshot:?}");
+        assert!(!snapshot.commits.is_empty(), "{snapshot:?}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_missing_head_messages_count_as_unborn() {
+        assert!(missing_head("fatal: Needed a single revision"));
+        assert!(missing_head("fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree."));
+        assert!(!missing_head("Git command timed out"));
+        assert!(!missing_head("Git command failed"));
+        assert!(!missing_head("Could not run Git: permission denied"));
+        assert!(!missing_head("not a git repository"));
     }
 }
