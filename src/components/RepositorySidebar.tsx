@@ -165,7 +165,9 @@ export function RepositorySidebar(props: {
       previousCursor: document.body.style.cursor,
       previousUserSelect: document.body.style.userSelect
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+    target.setPointerCapture(event.pointerId);
     window.addEventListener("pointermove", onPointerMove, { passive: false });
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);

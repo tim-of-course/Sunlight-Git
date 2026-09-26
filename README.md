@@ -1,12 +1,22 @@
 # Sunlight
 
-<img width="2160" height="1086" alt="Screenshot 2026-08-20 141720" src="https://github.com/user-attachments/assets/680d5280-c5b9-453d-a555-76a62a8183c7" />
+![Sunlight workspace with several repositories open](website/assets/screenshot.png)
 
 A **local multi-repository Git desktop app**. Open several repos side by side, stage and commit, browse history and files, and keep a long-running command (for example `bun run dev`) alive in the same column.
 
 This repository is the desktop app (Tauri 2 + Rust + SolidJS). It is not a hosted Git service.
 
 > Status: **0.1.0**, early public preview. Expect sharp edges. Git operations run against your real working trees.
+
+## Install
+
+Download a build from [GitHub Releases](https://github.com/tim-of-course/Sunlight-Git/releases/latest) or the [project site](https://tim-of-course.github.io/Sunlight-Git/).
+
+- **Windows:** the NSIS installer (`.exe`). SmartScreen may warn until Authenticode signing is added; choose *More info* → *Run anyway*.
+- **macOS (Apple Silicon):** the `.dmg` / `.app`. The build is ad-hoc signed so it should not appear as damaged. Allow it under System Settings → Privacy & Security.
+- **Linux x64:** the AppImage (or `.deb` if present).
+
+Sunlight checks for updates on launch and from the tray **Check for updates** item. It **asks before installing**. Installing an update quits the app (on Windows this is required by the installer), so save editor changes and stop running commands first if prompted.
 
 ## Why it exists
 
@@ -23,7 +33,7 @@ Most Git GUIs are one-repo-at-a-time. Sunlight is built for people who keep seve
 
 Adding a folder that is not yet a Git repository **initializes** one there.
 
-## Prerequisites
+## Development
 
 Install these before the first run:
 
@@ -33,8 +43,6 @@ Install these before the first run:
 | [Rust](https://rustup.rs/) | Stable toolchain; needed to compile the Tauri backend |
 | [Bun](https://bun.sh/) | Frontend install and scripts |
 | Platform toolchain | [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) (MSVC Build Tools on Windows, Xcode CLT on macOS, webkit/gtk packages on Linux) |
-
-## Run
 
 ```powershell
 git clone https://github.com/tim-of-course/Sunlight-Git.git
@@ -53,7 +61,7 @@ Then add repositories with **Browse** or by pasting a path. A command such as `b
 bun run tauri build
 ```
 
-Installers land under `src-tauri/target/release/bundle/`.
+Installers land under `src-tauri/target/release/bundle/`. Signed updater artifacts also require the `TAURI_SIGNING_PRIVATE_KEY` environment variable.
 
 ## Test
 
@@ -64,15 +72,30 @@ cd src-tauri
 cargo test
 ```
 
+## Releasing
+
+1. Bump the version in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` to the **same** SemVer.
+2. Commit, then tag `vX.Y.Z` matching that version and push the tag (or run the **publish** workflow).
+3. The workflow opens a **draft** GitHub Release with installers and `latest.json`. Review the assets, then publish the release. Installed apps only see updates after the draft is published.
+
+The publish workflow fails if a pushed tag does not match `v` plus the configured version.
+
+### Updater signing
+
+Updates are signed. The **public** key is in `src-tauri/tauri.conf.json`. The **private** key is a GitHub Actions secret named `TAURI_SIGNING_PRIVATE_KEY` (optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
+
+GitHub cannot show a secret after you save it. Keep an offline backup of the private key (this checkout uses the gitignored `.tauri-signing/` folder). If that key is lost, existing installs cannot receive updates.
+
 ## How it is put together
 
 | Path | Role |
 | --- | --- |
 | `src/` | SolidJS UI (workspace, columns, diffs, editor, file browser) |
 | `src-tauri/src/` | Rust backend: Git via subprocess, file I/O, per-repo command runner, workspace persistence |
-| `src-tauri/tauri.conf.json` | Window, bundle, and app identifier (`com.sunlight.app`) |
+| `src-tauri/tauri.conf.json` | Window, bundle, updater endpoint, and app identifier (`com.sunlight.app`) |
+| `website/` | GitHub Pages landing site |
 
-The UI talks to Rust through Tauri commands (`git_op`, `run_command`, file APIs, workspace APIs). Git is never rewritten in-process; Sunlight shells out to `git` with timeouts and output limits.
+The UI talks to Rust through Tauri commands (`git_op`, `run_command`, file APIs, workspace APIs). Git is never rewritten in-process; Sunlight shells out to `git` with timeouts and output limits. Installed apps check `https://github.com/tim-of-course/Sunlight-Git/releases/latest/download/latest.json` (a static file, not the GitHub REST API).
 
 Workspace membership is saved to:
 

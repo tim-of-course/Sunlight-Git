@@ -216,6 +216,59 @@ textarea {
   background: transparent;
 }
 
+.global-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 18px;
+  font-size: 12px;
+}
+
+.global-notice-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.global-notice button {
+  min-height: 24px;
+  padding: 2px 8px;
+  background: transparent;
+}
+
+.global-notice.available,
+.global-notice.installing {
+  border-bottom: 1px solid #5c4a1f;
+  color: #f2cc7f;
+  background: #2a2416;
+}
+
+.global-notice.available button,
+.global-notice.installing button {
+  border-color: #8a7040;
+}
+
+.global-notice.up-to-date {
+  border-bottom: 1px solid #2e4a3a;
+  color: #b7e0c7;
+  background: #1c2a22;
+}
+
+.global-notice.up-to-date button {
+  border-color: #4a705c;
+}
+
+.global-notice.error {
+  border-bottom: 1px solid #713c3c;
+  color: #ffc2c2;
+  background: #3d2427;
+}
+
+.global-notice.error button {
+  border-color: #8d5050;
+}
+
 .workspace-shell {
   position: relative;
   display: flex;

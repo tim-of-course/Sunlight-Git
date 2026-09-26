@@ -1,5 +1,7 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { Key } from "@solid-primitives/keyed";
+import { listen } from "@tauri-apps/api/event";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { useWorkspace } from "./workspaceState";
 import {
   repositoryScrollLeft,
@@ -10,7 +12,20 @@ import { EditorDrawer } from "./components/EditorDrawer";
 import { RepositoryColumn } from "./components/RepositoryColumn";
 import { RepositorySidebar } from "./components/RepositorySidebar";
 import { fileBasename, fileKey, formatBytes } from "./ui";
+import {
+  availableUpdateMessage,
+  commandIsRunning,
+  installAndRelaunch,
+  installLossMessage,
+  installWouldLoseWork,
+  lookupUpdate
+} from "./updater";
 import logo from "./assets/logo.svg";
+
+type UpdateNotice = {
+  kind: "available" | "up-to-date" | "error" | "installing";
+  message: string;
+};
 
 type EditorDraft = {
   content: string;
@@ -27,12 +42,14 @@ export function App() {
   const [workspaceElement, setWorkspaceElement] = createSignal<HTMLElement | null>(null);
   const [visibleRepositoryIds, setVisibleRepositoryIds] = createSignal<string[]>([]);
   const [primaryRepositoryId, setPrimaryRepositoryId] = createSignal<string | null>(null);
+  const [updateNotice, setUpdateNotice] = createSignal<UpdateNotice | null>(null);
   const repositoryElements = new Map<string, HTMLElement>();
   const drafts = new Map<string, EditorDraft>();
   let editorDraftContent = "";
   let currentEditorKey: string | null = null;
   let editorDirtyCheckTimer: number | null = null;
   let visibilityFrame: number | null = null;
+  let pendingUpdate: Update | null = null;
 
   const editorDirty = () => Boolean(live.activeFile()) && editorDirtyFlag();
   const anyEditorDirty = () =>
@@ -127,6 +144,70 @@ export function App() {
 
   onCleanup(() => {
     if (editorDirtyCheckTimer !== null) window.clearTimeout(editorDirtyCheckTimer);
+  });
+
+  const releasePendingUpdate = () => {
+    if (pendingUpdate) {
+      void pendingUpdate.close();
+      pendingUpdate = null;
+    }
+  };
+
+  const runUpdateCheck = async (manual: boolean) => {
+    const result = await lookupUpdate();
+    if (result.status === "skipped") return;
+    if (result.status === "up-to-date") {
+      if (manual) setUpdateNotice({ kind: "up-to-date", message: "Sunlight is up to date." });
+      return;
+    }
+    if (result.status === "error") {
+      if (manual) {
+        setUpdateNotice({
+          kind: "error",
+          message: result.message || "Could not check for updates."
+        });
+      }
+      return;
+    }
+    releasePendingUpdate();
+    pendingUpdate = result.update;
+    setUpdateNotice({
+      kind: "available",
+      message: availableUpdateMessage(result.update.version, result.update.body)
+    });
+  };
+
+  const installUpdate = async () => {
+    const update = pendingUpdate;
+    if (!update) return;
+    const dirty = anyEditorDirty();
+    const running = commandIsRunning(live.state.repositories);
+    if (installWouldLoseWork(dirty, running) && !window.confirm(installLossMessage(dirty, running))) {
+      return;
+    }
+    setUpdateNotice({ kind: "installing", message: "Downloading update…" });
+    const result = await installAndRelaunch(update, (message) => {
+      setUpdateNotice({ kind: "installing", message });
+    });
+    if (result.status === "error") {
+      setUpdateNotice({
+        kind: "error",
+        message: result.message || "Could not install the update."
+      });
+    }
+  };
+
+  onMount(() => {
+    if (import.meta.env.PROD) {
+      void runUpdateCheck(false);
+    }
+    const unlistenPromise = listen("check-for-updates", () => {
+      void runUpdateCheck(true);
+    });
+    onCleanup(() => {
+      void unlistenPromise.then((unlisten) => unlisten());
+      releasePendingUpdate();
+    });
   });
 
   const closeDrawer = () => {
@@ -281,6 +362,30 @@ export function App() {
           </span>
           <button type="button" onClick={live.clearOperationError}>Dismiss</button>
         </div>
+      </Show>
+
+      <Show when={updateNotice()}>
+        {(notice) => (
+          <div class={`global-notice ${notice().kind}`}>
+            <span>{notice().message}</span>
+            <div class="global-notice-actions">
+              <Show when={notice().kind === "available"}>
+                <button type="button" onClick={() => void installUpdate()}>Install and restart</button>
+              </Show>
+              <Show when={notice().kind !== "installing"}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (notice().kind === "available") releasePendingUpdate();
+                    setUpdateNotice(null);
+                  }}
+                >
+                  {notice().kind === "available" ? "Later" : "Dismiss"}
+                </button>
+              </Show>
+            </div>
+          </div>
+        )}
       </Show>
 
       <Show

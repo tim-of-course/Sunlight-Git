@@ -290,8 +290,9 @@ fn restore_workspace(app: &AppHandle, state: &AppState) {
 
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let open = MenuItem::with_id(app, "open", "Open Sunlight", true, None::<&str>)?;
+    let check_updates = MenuItem::with_id(app, "check-for-updates", "Check for updates", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &check_updates, &quit])?;
     let mut tray = TrayIconBuilder::new()
         .menu(&menu)
         .tooltip("Sunlight")
@@ -302,6 +303,13 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
+            }
+            "check-for-updates" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                let _ = app.emit("check-for-updates", ());
             }
             "quit" => app.exit(0),
             _ => {}
@@ -326,6 +334,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             repos: Mutex::new(vec![]),
             recents: Mutex::new(vec![]),
