@@ -51,3 +51,30 @@ The workflow creates a draft release. Before publishing, verify all jobs
 passed and `latest.json` contains valid URLs and signatures for all three
 platforms. Windows Authenticode and Apple notarization are not configured;
 the website documents the preview-build installation warnings.
+
+## Completed release checks
+
+Version [0.1.0](https://github.com/tim-of-course/Sunlight-Git/releases/tag/v0.1.0)
+was published on September 26, 2026 after these checks passed:
+
+- [CI](https://github.com/tim-of-course/Sunlight-Git/actions/runs/36264675702):
+  39 frontend tests, typechecking, 18 Rust unit tests, and the optimized Linux
+  GLib integration test.
+- [Release build](https://github.com/tim-of-course/Sunlight-Git/actions/runs/36264097070):
+  all three platforms built; Windows NSIS, Linux Debian, and macOS DMG
+  installation/startup checks passed. macOS signature verification passed.
+- [Windows update cycle](https://github.com/tim-of-course/Sunlight-Git/actions/runs/36264676293):
+  a temporary 0.0.0 installation downloaded the release's signed 0.1.0
+  installer, verified it, installed it, and relaunched at 0.1.0. Only the
+  disposable baseline accepts loopback HTTP and auto-installs; the shipped
+  app retains HTTPS enforcement and user-controlled installation.
+- The rebuilt Windows GUI loaded repository status/history and responded
+  to refresh and file-watcher updates with a separate workspace file.
+- Public `latest.json` and all three default platform download URLs returned
+  HTTP 200. Every manifest signature matched its release `.sig` asset.
+- Bun's audit is clean. A scan of 529 registry Rust packages found only the
+  documented `proc-macro-error` maintenance notice; the vendored GLib fix
+  was checked separately against the upstream patch.
+
+The `update-smoke` workflow can be run manually before later releases. It
+requires draft-release access and refuses to run outside Windows Actions.
