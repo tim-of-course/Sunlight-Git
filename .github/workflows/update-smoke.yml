@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # GitHub requires push access to read draft release assets.
+  contents: write
 
 jobs:
   windows-update:
