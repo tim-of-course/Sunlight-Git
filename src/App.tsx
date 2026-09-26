@@ -43,6 +43,7 @@ export function App() {
   const [visibleRepositoryIds, setVisibleRepositoryIds] = createSignal<string[]>([]);
   const [primaryRepositoryId, setPrimaryRepositoryId] = createSignal<string | null>(null);
   const [updateNotice, setUpdateNotice] = createSignal<UpdateNotice | null>(null);
+  const [installingUpdate, setInstallingUpdate] = createSignal(false);
   const repositoryElements = new Map<string, HTMLElement>();
   const drafts = new Map<string, EditorDraft>();
   let editorDraftContent = "";
@@ -180,15 +181,25 @@ export function App() {
   const installUpdate = async () => {
     const update = pendingUpdate;
     if (!update) return;
-    const dirty = anyEditorDirty();
-    const running = commandIsRunning(live.state.repositories);
-    if (installWouldLoseWork(dirty, running) && !window.confirm(installLossMessage(dirty, running))) {
-      return;
-    }
     setUpdateNotice({ kind: "installing", message: "Downloading update…" });
-    const result = await installAndRelaunch(update, (message) => {
-      setUpdateNotice({ kind: "installing", message });
-    });
+    const result = await installAndRelaunch(
+      update,
+      (message) => setUpdateNotice({ kind: "installing", message }),
+      () => {
+        const dirty = anyEditorDirty();
+        const running = commandIsRunning(live.state.repositories);
+        if (installWouldLoseWork(dirty, running) && !window.confirm(installLossMessage(dirty, running))) {
+          return false;
+        }
+        setInstallingUpdate(true);
+        return true;
+      }
+    );
+    setInstallingUpdate(false);
+    if (result.status === "cancelled") {
+      releasePendingUpdate();
+      setUpdateNotice(null);
+    }
     if (result.status === "error") {
       setUpdateNotice({
         kind: "error",
@@ -320,7 +331,7 @@ export function App() {
   });
 
   return (
-    <div class="shell">
+    <div class="shell" inert={installingUpdate()}>
       <header class="topbar">
         <div class="brand">
           <img class="brand-mark" src={logo} width="36" height="36" alt="Sunlight" />

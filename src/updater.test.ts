@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { installAndRelaunch } from "./updater";
 import {
   availableUpdateMessage,
   commandIsRunning,
@@ -10,8 +13,47 @@ import {
   tryBeginUpdateCheck
 } from "./updaterLogic";
 
+vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
+
 afterEach(() => {
+  vi.clearAllMocks();
   resetUpdateCheckLock();
+});
+
+// This order prevents losing edits made while a slow update download is running.
+describe("installation consent", () => {
+  it("keeps the app open when work created during download prevents installation", async () => {
+    let dirty = false;
+    const install = vi.fn();
+    const update = {
+      download: vi.fn(async () => { dirty = true; }),
+      install
+    } as unknown as Update;
+
+    const result = await installAndRelaunch(update, () => {}, () => !dirty);
+
+    expect(result.status).toBe("cancelled");
+    expect(install).not.toHaveBeenCalled();
+    expect(relaunch).not.toHaveBeenCalled();
+    expect(tryBeginUpdateCheck()).toBe(true);
+  });
+
+  it("installs and relaunches only after consent for the completed download", async () => {
+    const steps: string[] = [];
+    const update = {
+      download: vi.fn(async () => { steps.push("downloaded"); }),
+      install: vi.fn(async () => { steps.push("installed"); })
+    } as unknown as Update;
+
+    const result = await installAndRelaunch(update, () => {}, () => {
+      steps.push("confirmed");
+      return true;
+    });
+
+    expect(result.status).toBe("ok");
+    expect(steps).toEqual(["downloaded", "confirmed", "installed"]);
+    expect(relaunch).toHaveBeenCalledOnce();
+  });
 });
 
 describe("commandIsRunning", () => {

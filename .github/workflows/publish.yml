@@ -65,7 +65,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils xvfb
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -98,3 +98,6 @@ jobs:
           updaterJsonPreferNsis: true
           tauriScript: bun run tauri
           args: ${{ matrix.args }}
+
+      - name: Install and launch the built app
+        run: python scripts/smoke-install.py

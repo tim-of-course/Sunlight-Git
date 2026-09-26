@@ -30,8 +30,9 @@ export async function lookupUpdate(): Promise<UpdateLookup> {
 
 export async function installAndRelaunch(
   update: Update,
-  onProgress: (message: string) => void
-): Promise<{ status: "ok" } | { status: "error"; message: string }> {
+  onProgress: (message: string) => void,
+  confirmInstall: () => boolean
+): Promise<{ status: "ok" | "cancelled" } | { status: "error"; message: string }> {
   if (!tryBeginUpdateCheck()) {
     return { status: "error", message: "An update is already in progress." };
   }
@@ -39,7 +40,7 @@ export async function installAndRelaunch(
     let downloaded = 0;
     let total: number | undefined;
     onProgress("Downloading update…");
-    await update.downloadAndInstall((event: DownloadEvent) => {
+    await update.download((event: DownloadEvent) => {
       if (event.event === "Started") {
         downloaded = 0;
         total = event.data.contentLength;
@@ -50,6 +51,10 @@ export async function installAndRelaunch(
         onProgress(formatDownloadProgress(downloaded, total));
       }
     });
+    // Work can change during the download. Windows exits inside install().
+    if (!confirmInstall()) return { status: "cancelled" };
+    onProgress("Installing update…");
+    await update.install();
     onProgress("Restarting Sunlight…");
     await relaunch();
     return { status: "ok" };

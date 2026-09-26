@@ -12,6 +12,8 @@ This repository is the desktop app (Tauri 2 + Rust + SolidJS). It is not a hoste
 
 Download a build from [GitHub Releases](https://github.com/tim-of-course/Sunlight-Git/releases/latest) or the [project site](https://tim-of-course.github.io/Sunlight-Git/).
 
+Install [Git](https://git-scm.com/downloads) first and make sure `git --version` works in a terminal. Sunlight uses your installed Git; it does not bundle it. Windows installations in `C:\Program Files\Git\cmd` are also detected. Repository commands require their own tools, such as Bun or Node.js.
+
 - **Windows:** the NSIS installer (`.exe`). SmartScreen may warn until Authenticode signing is added; choose *More info* → *Run anyway*.
 - **macOS (Apple Silicon):** the `.dmg` / `.app`. The build is ad-hoc signed so it should not appear as damaged. Allow it under System Settings → Privacy & Security.
 - **Linux x64:** the AppImage (or `.deb` if present).
@@ -92,7 +94,7 @@ GitHub cannot show a secret after you save it. Keep an offline backup of the pri
 | --- | --- |
 | `src/` | SolidJS UI (workspace, columns, diffs, editor, file browser) |
 | `src-tauri/src/` | Rust backend: Git via subprocess, file I/O, per-repo command runner, workspace persistence |
-| `src-tauri/tauri.conf.json` | Window, bundle, updater endpoint, and app identifier (`com.sunlight.app`) |
+| `src-tauri/tauri.conf.json` | Window, bundle, updater endpoint, and app identifier (`io.github.tim-of-course.sunlight`) |
 | `website/` | GitHub Pages landing site |
 
 The UI talks to Rust through Tauri commands (`git_op`, `run_command`, file APIs, workspace APIs). Git is never rewritten in-process; Sunlight shells out to `git` with timeouts and output limits. Installed apps check `https://github.com/tim-of-course/Sunlight-Git/releases/latest/download/latest.json` (a static file, not the GitHub REST API).
