@@ -12,12 +12,19 @@ permissions:
 jobs:
   verify-version:
     runs-on: ubuntu-latest
+    outputs:
+      build_allowed: ${{ steps.version.outputs.build_allowed }}
     steps:
       - uses: actions/checkout@v4
       - name: Check version files and tag
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
           import json, os, re, sys
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
 
           tauri = json.load(open("src-tauri/tauri.conf.json", encoding="utf-8"))["version"]
           pkg = json.load(open("package.json", encoding="utf-8"))["version"]
@@ -41,10 +48,24 @@ jobs:
                   sys.exit(1)
 
           print(f"Version {tauri} OK")
+          url = f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/v{tauri}"
+          request = Request(url, headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}"})
+          try:
+              with urlopen(request) as response:
+                  published = not json.load(response)["draft"]
+          except HTTPError as error:
+              if error.code != 404:
+                  raise
+              published = False
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"build_allowed={str(not published).lower()}\n")
+          if published:
+              print(f"v{tauri} is already published; skipping rebuild.")
           PY
 
   publish-tauri:
     needs: verify-version
+    if: needs.verify-version.outputs.build_allowed == 'true'
     permissions:
       contents: write
     strategy:

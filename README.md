@@ -81,6 +81,7 @@ cargo test
 3. The workflow opens a **draft** GitHub Release with installers and `latest.json`. Review the assets, then publish the release. Installed apps only see updates after the draft is published.
 
 The publish workflow fails if a pushed tag does not match `v` plus the configured version.
+It skips versions that are already published, including the tag event created when publishing a manually built draft.
 
 ### Updater signing
 

@@ -78,3 +78,7 @@ was published on September 26, 2026 after these checks passed:
 
 The `update-smoke` workflow can be run manually before later releases. It
 requires draft-release access and refuses to run outside Windows Actions.
+
+Publishing a manually built draft also creates its tag and triggers the
+tag-push workflow. The publish workflow now skips an already-published
+version, so that event cannot rebuild or replace the public release assets.
